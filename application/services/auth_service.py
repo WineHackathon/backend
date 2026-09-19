@@ -31,15 +31,13 @@ def hash_password(password: str, salt: str | None = None) -> str:
 
 
 def verify_password(password: str, hashed: str, salt: str | None = None) -> bool:
-    """Проверка пароля с поддержкой PBKDF2 и обратной совместимостью для SHA-256."""
+    """Проверка пароля через PBKDF2-HMAC-SHA256."""
+    if not hashed.startswith("pbkdf2_sha256$"):
+        return False
     used_salt = salt or settings.password_salt
-    if hashed.startswith("pbkdf2_sha256$"):
-        expected = hashed.split("$", 1)[1]
-        derived = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), used_salt.encode("utf-8"), 100_000).hex()
-        return hmac.compare_digest(derived, expected)
-    # Обратная совместимость для legacy SHA-256 хешей
-    legacy = hashlib.sha256(f"{used_salt}{password}".encode("utf-8")).hexdigest()
-    return hmac.compare_digest(legacy, hashed)
+    expected = hashed.split("$", 1)[1]
+    derived = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), used_salt.encode("utf-8"), 100_000).hex()
+    return hmac.compare_digest(derived, expected)
 
 
 class TokenService:
@@ -62,25 +60,33 @@ class TokenService:
         )
 
     def create_token_pair(self, user_id: uuid.UUID, is_admin: bool = False) -> TokenPairDTO:
-        """Создание пары токенов (access и refresh) с временем жизни из настроек."""
+        """Создание пары токенов (access и refresh) с валидацией через TokenPayloadDTO."""
         now = datetime.now(timezone.utc)
-        access_exp = now + timedelta(minutes=self.access_token_expire_minutes)
-        refresh_exp = now + timedelta(days=self.refresh_token_expire_days)
+        access_exp = int((now + timedelta(minutes=self.access_token_expire_minutes)).timestamp())
+        refresh_exp = int((now + timedelta(days=self.refresh_token_expire_days)).timestamp())
 
-        access_payload = {
-            "sub": str(user_id),
-            "is_admin": is_admin,
-            "exp": access_exp,
-            "type": "access",
-        }
-        refresh_payload = {
-            "sub": str(user_id),
-            "exp": refresh_exp,
-            "type": "refresh",
-        }
+        access_payload = TokenPayloadDTO(
+            sub=user_id,
+            is_admin=is_admin,
+            exp=access_exp,
+            type="access",
+        )
+        refresh_payload = TokenPayloadDTO(
+            sub=user_id,
+            exp=refresh_exp,
+            type="refresh",
+        )
 
-        access_token = jwt.encode(access_payload, self.jwt_secret, algorithm=self.jwt_algorithm)
-        refresh_token = jwt.encode(refresh_payload, self.jwt_secret, algorithm=self.jwt_algorithm)
+        access_token = jwt.encode(
+            access_payload.model_dump(mode="json"),
+            self.jwt_secret,
+            algorithm=self.jwt_algorithm,
+        )
+        refresh_token = jwt.encode(
+            refresh_payload.model_dump(mode="json"),
+            self.jwt_secret,
+            algorithm=self.jwt_algorithm,
+        )
 
         return TokenPairDTO(
             access_token=access_token,

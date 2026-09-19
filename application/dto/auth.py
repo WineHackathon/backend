@@ -7,9 +7,9 @@ from pydantic import BaseModel, EmailStr, Field
 
 
 class TokenPayloadDTO(BaseModel):
-    """Строго типизированный payload JWT токена."""
+    """Строго типизированный payload JWT токена (exp - Unix timestamp NumericDate по RFC 7519)."""
     sub: uuid.UUID
-    exp: datetime
+    exp: int
     type: str  # "access" | "refresh"
     is_admin: bool = False
 

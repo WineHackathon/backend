@@ -222,18 +222,15 @@ async def test_auth_service_security_and_tokens():
     with pytest.raises(AuthenticationError, match="Недействительный тип токена"):
         await service.refresh_tokens(RefreshTokenRequestDTO(refresh_token=tokens.access_token))
 
-    # 5. Проверка хеширования паролей: PBKDF2 + обратная совместимость со старым SHA-256
+    # 5. Проверка хеширования паролей: чистый PBKDF2 (без устаревшего SHA-256)
     pwd = "superSecretPassword123"
     new_hash = hash_password(pwd)
     assert new_hash.startswith("pbkdf2_sha256$")
     assert verify_password(pwd, new_hash) is True
     assert verify_password("wrongPassword", new_hash) is False
 
-    # Legacy SHA-256 хеш
-    import hashlib
-    from backend.app.config import settings
-    legacy_hash = hashlib.sha256(f"{settings.password_salt}{pwd}".encode("utf-8")).hexdigest()
-    assert verify_password(pwd, legacy_hash) is True
-    assert verify_password("wrongPassword", legacy_hash) is False
+    # Невалидный / устаревший хеш без префикса pbkdf2_sha256$ должен отклоняться
+    legacy_hash = "someOldSha256OrInvalidHash"
+    assert verify_password(pwd, legacy_hash) is False
 
 
