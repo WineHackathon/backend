@@ -5,6 +5,8 @@ import os
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker, AsyncEngine
 
+from application.adapters.database.models import Base
+
 _engine: AsyncEngine | None = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None
 
@@ -44,15 +46,7 @@ async def global_init_db(database_url: str | None = None) -> None:
         expire_on_commit=False,
     )
 
-    # Автоматическое создание таблиц базы данных при инициализации
-    from application.adapters.database.models.base import Base
-    import application.adapters.database.models.wine
-    import application.adapters.database.models.user
-    import application.adapters.database.models.cellar
-    import application.adapters.database.models.pairing
-    import application.adapters.database.models.scan_history
-    import application.adapters.database.models.preference_history
-
+    # Создание всех зарегистрированных таблиц базы данных при инициализации
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
