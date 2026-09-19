@@ -1,10 +1,15 @@
 """
 HTTP эндпоинт чата с AI-сомелье (/api/v1/sommelier/chat).
 """
+import logging
 from fastapi import APIRouter
+from application.adapters.database.db_session import create_session
 from application.dto.sommelier import SommelierChatRequestDTO, SommelierChatResponseDTO
+from application.services.catalog_service import CatalogService
 from sommelier.app.services.rag_service import SommelierRAGService
 from sommelier.app.services.llm_client import SommelierLLMClient
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/sommelier", tags=["Sommelier HTTP Chat"])
 
@@ -20,8 +25,6 @@ async def chat(request: SommelierChatRequestDTO):
     recommended_slugs: list[str] = []
 
     try:
-        from application.adapters.database.db_session import create_session
-        from application.services.catalog_service import CatalogService
         async with create_session() as session:
             cat_service = CatalogService(session)
             if last_user_msg:
@@ -31,8 +34,8 @@ async def chat(request: SommelierChatRequestDTO):
             if not recommended_slugs:
                 popular = await cat_service.search_by_taste_matrix(limit=3)
                 recommended_slugs = [w.slug for w in popular]
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning(f"Ошибка при подборе рекомендаций вин в чате сомелье: {exc}")
 
     system_prompt = rag_service.build_system_prompt()
     messages = [{"role": m.role, "content": m.content} for m in request.messages]

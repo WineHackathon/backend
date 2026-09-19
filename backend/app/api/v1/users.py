@@ -7,14 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.adapters.database.db_session import get_session
 from application.adapters.database.models.cellar import CellarStatus
-from application.adapters.database.repositories.scan_repo import ScanRepository
-from application.adapters.database.repositories.preference_repo import PreferenceRepository
 from application.dto.user import UserDTO, UserPreferenceHistoryDTO
 from application.dto.cellar import CellarItemDTO, CellarItemCreateDTO, CellarDeleteResponseDTO
 from application.dto.scan import ScanHistoryItemDTO
 from application.services.user_service import UserService
 from application.services.cellar_service import CellarService
-from application.services.catalog_service import CatalogService
 from backend.app.dependencies import get_current_user_id
 
 router = APIRouter(prefix="/api/v1/users", tags=["User Profile & Cellar"])

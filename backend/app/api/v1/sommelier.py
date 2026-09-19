@@ -1,7 +1,4 @@
-"""
-Эндпоинты взаимодействия с цифровым сомелье (/api/v1/sommelier).
-Включает 5-вопросный онбординг с пейволлом для гостей и диалоговый чат.
-"""
+import logging
 import uuid
 import httpx
 from fastapi import APIRouter, Depends, Header, Request
@@ -15,8 +12,12 @@ from application.dto.sommelier import (
     SommelierChatRequestDTO,
     SommelierChatResponseDTO,
 )
+from application.services.catalog_service import CatalogService
+from application.services.taste_profile_service import TasteProfileService
 from backend.app.config import settings
 from backend.app.dependencies import get_optional_user_id
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/sommelier", tags=["Digital Sommelier"])
 
@@ -122,9 +123,6 @@ async def submit_onboarding_answer(
         )
 
     # Для авторизованного пользователя подбираем кандидатов по вкусовой матрице
-    from application.services.catalog_service import CatalogService
-    from application.services.taste_profile_service import TasteProfileService
-
     catalog_service = CatalogService(session)
     candidates = await catalog_service.search_by_taste_matrix(
         category=current_answers.get("category"),
@@ -180,8 +178,8 @@ async def chat_with_sommelier(
             )
             if resp.status_code == 200:
                 return resp.json()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning(f"Ошибка обращения к сервису сомелье: {exc}. Использование fallback ответа.")
 
     # Интеллектуальный fallback
     return SommelierChatResponseDTO(

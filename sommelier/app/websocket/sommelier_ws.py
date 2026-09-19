@@ -10,6 +10,8 @@ from contextlib import asynccontextmanager
 from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from application.adapters.database.db_session import create_session
+from application.services.catalog_service import CatalogService
 from sommelier.app.services.onboarding_service import SommelierOnboardingService
 from sommelier.app.services.recommendation_engine import SommelierRecommendationEngine
 from sommelier.app.services.llm_client import SommelierLLMClient
@@ -25,8 +27,6 @@ async def _get_catalog_service():
     """Безопасное получение сервиса каталога с сессией БД в контекстном менеджере."""
     session = None
     try:
-        from application.adapters.database.db_session import create_session
-        from application.services.catalog_service import CatalogService
         session = create_session()
         yield CatalogService(session)
     except Exception as e:
