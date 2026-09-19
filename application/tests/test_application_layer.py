@@ -237,15 +237,9 @@ async def test_auth_service_security_and_tokens():
     assert verify_password(pwd, hash2) is True
     assert verify_password("wrongPassword", hash1) is False
 
-    # Обратная совместимость с устаревшим 2-элементным форматом pbkdf2_sha256$<hash>
-    import hashlib
-    from application.services.auth_service import auth_settings
-    legacy_derived = hashlib.pbkdf2_hmac("sha256", pwd.encode("utf-8"), auth_settings.password_salt.encode("utf-8"), 100_000).hex()
-    legacy_hash_format = f"pbkdf2_sha256${legacy_derived}"
-    assert verify_password(pwd, legacy_hash_format) is True
-
-    # Невалидный / устаревший хеш без префикса pbkdf2_sha256$ должен отклоняться
-    invalid_hash = "someOldSha256OrInvalidHash"
-    assert verify_password(pwd, invalid_hash) is False
+    # Невалидный / устаревший хеш без префикса pbkdf2_sha256$ или с неверной структурой должен отклоняться
+    assert verify_password(pwd, "someOldSha256OrInvalidHash") is False
+    assert verify_password(pwd, "pbkdf2_sha256$invalid_parts") is False
+    assert verify_password(pwd, "pbkdf2_sha256$not_a_number$salt$hash") is False
 
 

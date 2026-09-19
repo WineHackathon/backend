@@ -5,11 +5,11 @@ import uuid
 from typing import AsyncGenerator
 from fastapi import Depends, HTTPException, Header, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-import jwt
 import redis.asyncio as redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.adapters.database.db_session import get_session
+from application.services.auth_service import TokenService
 from backend.app.config import settings
 from backend.app.services.rate_limiter import ScanRateLimiter
 from backend.app.services.ml_dispatcher import MLDispatcher
@@ -31,8 +31,6 @@ def get_ml_dispatcher(redis_client: redis.Redis | None = Depends(get_redis_clien
     """Внедрение диспетчера ML задач."""
     return MLDispatcher(redis_client)
 
-
-from application.services.auth_service import TokenService
 
 async def get_optional_user_id(
     auth: HTTPAuthorizationCredentials | None = Depends(security),

@@ -23,7 +23,6 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 60
     jwt_refresh_token_expire_days: int = 30
-    password_salt: str = "wine_salt_hackathon_2026"
 
     # Upload & Scanner
     max_upload_size_mb: int = 15

@@ -30,7 +30,6 @@ class AuthSettings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 60
     jwt_refresh_token_expire_days: int = 30
-    password_salt: str = "wine_salt_hackathon_2026"
 
     model_config = {
         "env_file": ".env",
@@ -55,12 +54,12 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, hashed: str) -> bool:
-    """Проверка пароля через PBKDF2-HMAC-SHA256 с поддержкой модульного формата crypt и обратной совместимости."""
+    """Проверка пароля через PBKDF2-HMAC-SHA256 по стандартному формату: pbkdf2_sha256$<iterations>$<salt>$<hash>."""
     if not hashed or not hashed.startswith("pbkdf2_sha256$"):
         return False
     parts = hashed.split("$")
 
-    # Стандартный модульный формат: pbkdf2_sha256$<iterations>$<salt>$<hash>
+    # Стандартный модульный crypt формат: pbkdf2_sha256$<iterations>$<salt>$<hash>
     if len(parts) == 4 and parts[0] == "pbkdf2_sha256":
         try:
             iterations = int(parts[1])
@@ -75,18 +74,6 @@ def verify_password(password: str, hashed: str) -> bool:
             iterations,
         ).hex()
         return hmac.compare_digest(derived, expected_hash)
-
-    # Устаревший 2-элементный формат: pbkdf2_sha256$<hash> (обратная совместимость)
-    elif len(parts) == 2 and parts[0] == "pbkdf2_sha256":
-        expected = parts[1]
-        legacy_salt = auth_settings.password_salt
-        derived_legacy = hashlib.pbkdf2_hmac(
-            "sha256",
-            password.encode("utf-8"),
-            legacy_salt.encode("utf-8"),
-            100_000,
-        ).hex()
-        return hmac.compare_digest(derived_legacy, expected)
 
     return False
 
