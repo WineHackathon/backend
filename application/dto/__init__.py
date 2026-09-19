@@ -1,7 +1,15 @@
 """
 Экспорт всех DTO схем слоя application.
 """
-from .wine import WineDTO, WineDetailDTO, TasteMatrixDTO, FoodPairingDTO
+from .wine import (
+    WineDTO,
+    WineDetailDTO,
+    TasteMatrixDTO,
+    FoodPairingDTO,
+    WineFilterDTO,
+    TasteMatrixSearchDTO,
+    PaginatedWinesDTO,
+)
 from .user import UserDTO, TasteProfileDTO, UserPreferenceHistoryDTO
 from .auth import LoginRequestDTO, RegisterRequestDTO, TokenPairDTO, YandexAuthDTO
 from .cellar import CellarItemDTO, CellarItemCreateDTO
@@ -20,6 +28,9 @@ __all__ = [
     "WineDetailDTO",
     "TasteMatrixDTO",
     "FoodPairingDTO",
+    "WineFilterDTO",
+    "TasteMatrixSearchDTO",
+    "PaginatedWinesDTO",
     "UserDTO",
     "TasteProfileDTO",
     "UserPreferenceHistoryDTO",

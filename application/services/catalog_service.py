@@ -7,7 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.adapters.database.repositories.wine_repo import WineRepository
 from application.adapters.database.transaction_manager import TransactionManager
-from application.dto.wine import WineDTO, WineDetailDTO, FoodPairingDTO
+from application.dto.wine import (
+    WineDTO,
+    WineDetailDTO,
+    FoodPairingDTO,
+    WineFilterDTO,
+    TasteMatrixSearchDTO,
+    PaginatedWinesDTO,
+)
 from application.exceptions.domain_exceptions import WineNotFound
 
 
@@ -82,32 +89,31 @@ class CatalogService:
 
     async def list_wines(
         self,
-        category: str | None = None,
-        region: str | None = None,
-        winery: str | None = None,
-        sugar_type: str | None = None,
-        min_score: float | None = None,
-        query: str | None = None,
-        offset: int = 0,
-        limit: int = 20,
-    ) -> dict:
-        """Поиск и фильтрация вин в каталоге."""
+        filter_dto: WineFilterDTO | None = None,
+        **kwargs,
+    ) -> PaginatedWinesDTO:
+        """Поиск и фильтрация вин в каталоге с возвратом типизированного PaginatedWinesDTO."""
+        if filter_dto is None:
+            filter_dto = WineFilterDTO(**kwargs)
+        elif kwargs:
+            filter_dto = filter_dto.model_copy(update=kwargs)
+
         items, total = await self.repo.list_wines(
-            category=category,
-            region=region,
-            winery=winery,
-            sugar_type=sugar_type,
-            min_score=min_score,
-            query=query,
-            offset=offset,
-            limit=limit,
+            category=filter_dto.category,
+            region=filter_dto.region,
+            winery=filter_dto.winery,
+            sugar_type=filter_dto.sugar_type,
+            min_score=filter_dto.min_score,
+            query=filter_dto.query,
+            offset=filter_dto.offset,
+            limit=filter_dto.limit,
         )
-        return {
-            "total": total,
-            "limit": limit,
-            "offset": offset,
-            "items": [self.to_dto(w) for w in items],
-        }
+        return PaginatedWinesDTO(
+            total=total,
+            limit=filter_dto.limit,
+            offset=filter_dto.offset,
+            items=[self.to_dto(w) for w in items],
+        )
 
     async def list_regions(self) -> list[str]:
         """Получение всех регионов."""
@@ -115,21 +121,22 @@ class CatalogService:
 
     async def search_by_taste_matrix(
         self,
-        category: str | None = None,
-        target_sweetness: float | None = None,
-        target_body: float | None = None,
-        target_acidity: float | None = None,
-        target_oak: float | None = None,
-        limit: int = 10,
+        search_dto: TasteMatrixSearchDTO | None = None,
+        **kwargs,
     ) -> list[WineDTO]:
         """Поиск вин по вкусовой матрице (4D расстояние вкуса)."""
+        if search_dto is None:
+            search_dto = TasteMatrixSearchDTO(**kwargs)
+        elif kwargs:
+            search_dto = search_dto.model_copy(update=kwargs)
+
         wines = await self.repo.find_by_taste_matrix(
-            category=category,
-            target_sweetness=target_sweetness,
-            target_body=target_body,
-            target_acidity=target_acidity,
-            target_oak=target_oak,
-            limit=limit,
+            category=search_dto.category,
+            target_sweetness=search_dto.target_sweetness,
+            target_body=search_dto.target_body,
+            target_acidity=search_dto.target_acidity,
+            target_oak=search_dto.target_oak,
+            limit=search_dto.limit,
         )
         return [self.to_dto(w) for w in wines]
 

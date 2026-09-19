@@ -136,3 +136,32 @@ async def test_catalog_service_to_dto():
     detail_dto = service.to_detail_dto(wine)
     assert isinstance(detail_dto, WineDetailDTO)
     assert "цитрус" in detail_dto.aroma_tags
+
+
+@pytest.mark.asyncio
+async def test_catalog_service_list_wines_with_dto():
+    """Проверка работы CatalogService с WineFilterDTO и PaginatedWinesDTO."""
+    from application.dto.wine import WineFilterDTO, PaginatedWinesDTO
+
+    mock_session = AsyncMock()
+    service = CatalogService(mock_session)
+
+    wine = Wine(
+        id=uuid.uuid4(),
+        slug="test-wine",
+        name="Тестовое вино",
+        category="Красное",
+        region="Крым",
+        sugar_type="Сухое",
+    )
+    service.repo.list_wines = AsyncMock(return_value=([wine], 1))
+
+    filter_dto = WineFilterDTO(category="Красное", limit=10)
+    result = await service.list_wines(filter_dto)
+
+    assert isinstance(result, PaginatedWinesDTO)
+    assert result.total == 1
+    assert result.limit == 10
+    assert len(result.items) == 1
+    assert result.items[0].slug == "test-wine"
+

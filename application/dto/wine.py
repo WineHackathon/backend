@@ -63,3 +63,34 @@ class WineDetailDTO(WineDTO):
     created_at: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+
+class WineFilterDTO(BaseModel):
+    """Параметры фильтрации и постраничного поиска в каталоге вин."""
+    category: str | None = Field(default=None, description="Категория (Белое, Красное, Розовое, Игристое)")
+    region: str | None = Field(default=None, description="Винодельческий регион")
+    winery: str | None = Field(default=None, description="Производитель / винодельня")
+    sugar_type: str | None = Field(default=None, description="Содержание сахара (Сухое, Полусухое и др.)")
+    min_score: float | None = Field(default=None, ge=0.0, le=100.0, description="Минимальный балл Роскачества")
+    query: str | None = Field(default=None, description="Поисковый запрос по названию или описанию")
+    offset: int = Field(default=0, ge=0, description="Смещение пагинации")
+    limit: int = Field(default=20, ge=1, le=100, description="Размер страницы")
+
+
+class TasteMatrixSearchDTO(BaseModel):
+    """Параметры поиска вин по 4D вкусовой матрице."""
+    category: str | None = Field(default=None, description="Категория вина")
+    target_sweetness: float | None = Field(default=None, ge=1.0, le=5.0, description="Желаемая сладость (1.0 - 5.0)")
+    target_body: float | None = Field(default=None, ge=1.0, le=5.0, description="Желаемая плотность/тело (1.0 - 5.0)")
+    target_acidity: float | None = Field(default=None, ge=1.0, le=5.0, description="Желаемая кислотность (1.0 - 5.0)")
+    target_oak: float | None = Field(default=None, ge=1.0, le=5.0, description="Желаемая выдержка в дубе (1.0 - 5.0)")
+    limit: int = Field(default=10, ge=1, le=50, description="Лимит выборки")
+
+
+class PaginatedWinesDTO(BaseModel):
+    """Типизированный постраничный ответ каталога вин."""
+    total: int
+    offset: int
+    limit: int
+    items: list[WineDTO]
+
