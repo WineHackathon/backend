@@ -1,0 +1,17 @@
+{
+  "name": "wine-hackathon-frontend",
+  "version": "1.0.0",
+  "description": "Web Application for WineHackathon Scanner and Sommelier",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "lucide": "^0.395.0"
+  },
+  "devDependencies": {
+    "vite": "^5.3.1"
+  }
+}

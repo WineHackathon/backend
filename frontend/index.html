@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Своё Вино — Сканер и AI-Сомелье</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            wine: {
+              50: '#fdf2f4',
+              100: '#fbe6e9',
+              200: '#f8ced6',
+              600: '#b81d45',
+              700: '#9b1437',
+              800: '#811430',
+              900: '#6f142c',
+              950: '#3f0614',
+            },
+            gold: {
+              400: '#f3c760',
+              500: '#dfa838',
+              600: '#bf8624',
+            }
+          },
+          fontFamily: {
+            sans: ['Plus Jakarta Sans', 'sans-serif'],
+            serif: ['Playfair Display', 'serif'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    .glass {
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+    }
+  </style>
+</head>
+<body class="bg-stone-50 text-stone-900 min-h-screen flex flex-col font-sans antialiased selection:bg-wine-700 selection:text-white">
+
+  <!-- Header / Navigation -->
+  <header class="sticky top-0 z-50 glass border-b border-stone-200">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-full bg-wine-900 flex items-center justify-center text-gold-400 font-serif font-bold text-xl shadow-md">
+          В
+        </div>
+        <div>
+          <span class="font-serif font-bold text-xl tracking-tight text-wine-950">Своё Вино</span>
+          <span class="hidden sm:inline-block ml-2 text-xs uppercase tracking-widest text-stone-500 font-semibold">Роскачество &times; РСХБ</span>
+        </div>
+      </div>
+
+      <!-- User Auth Section -->
+      <div id="auth-container" class="flex items-center space-x-3">
+        <button id="btn-yandex-login" onclick="loginWithYandex()" class="flex items-center space-x-2 bg-black hover:bg-stone-800 text-white text-xs font-semibold px-4 py-2 rounded-full transition shadow-sm">
+          <span class="w-4 h-4 rounded-full bg-red-600 flex items-center justify-center text-white font-bold text-[10px]">Я</span>
+          <span>Войти с Яндекс ID</span>
+        </button>
+        <div id="user-profile-badge" class="hidden flex items-center space-x-2">
+          <img id="user-avatar" class="w-8 h-8 rounded-full border border-wine-700 object-cover" src="" alt="Avatar">
+          <span id="user-name" class="text-sm font-medium text-stone-800"></span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-8">
+    
+    <!-- Hero Banner -->
+    <section class="text-center py-6 mb-8">
+      <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-wine-50 border border-wine-200 text-wine-800 text-xs font-semibold mb-3">
+        <i data-lucide="award" class="w-4 h-4 text-gold-500"></i>
+        <span>Винный гид России: отбор вин выше 83 баллов</span>
+      </div>
+      <h1 class="font-serif text-3xl sm:text-5xl font-bold text-wine-950 mb-3 tracking-tight">
+        Сканер винных этикеток
+      </h1>
+      <p class="text-stone-600 max-w-xl mx-auto text-sm sm:text-base">
+        Сфотографируйте бутылку или этикетку, чтобы мгновенно открыть карточку вина, оценку экспертов и рекомендации сомелье.
+      </p>
+    </section>
+
+    <!-- Scanner & Action Area -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      
+      <!-- Left Column: Camera / Upload -->
+      <div class="lg:col-span-6 bg-white rounded-2xl p-6 shadow-sm border border-stone-200">
+        <h2 class="font-serif font-bold text-lg text-wine-900 mb-4 flex items-center space-x-2">
+          <i data-lucide="camera" class="w-5 h-5 text-wine-700"></i>
+          <span>Загрузка или снимок</span>
+        </h2>
+
+        <!-- Upload Dropzone -->
+        <div id="dropzone" onclick="document.getElementById('file-input').click()" class="border-2 border-dashed border-stone-300 hover:border-wine-600 rounded-xl p-8 text-center cursor-pointer transition bg-stone-50 hover:bg-wine-50/30 flex flex-col items-center justify-center min-h-[260px] relative overflow-hidden group">
+          <input type="file" id="file-input" accept="image/*" class="hidden" onchange="handleFileSelect(event)">
+          <img id="image-preview" class="hidden absolute inset-0 w-full h-full object-contain bg-black/5" src="" alt="Preview">
+          
+          <div id="upload-prompt" class="flex flex-col items-center space-y-3">
+            <div class="w-14 h-14 rounded-full bg-wine-100 text-wine-700 flex items-center justify-center group-hover:scale-110 transition">
+              <i data-lucide="image-plus" class="w-7 h-7"></i>
+            </div>
+            <div>
+              <p class="font-semibold text-stone-800 text-sm">Нажмите для выбора фото</p>
+              <p class="text-xs text-stone-500 mt-1">Поддерживаются JPEG, PNG, WebP</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Scan Button -->
+        <button id="btn-scan" onclick="performScan()" disabled class="w-full mt-4 bg-wine-900 hover:bg-wine-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 px-6 rounded-xl transition shadow-md flex items-center justify-center space-x-2">
+          <i data-lucide="scan-line" class="w-5 h-5"></i>
+          <span id="scan-btn-text">Распознать этикетку</span>
+        </button>
+
+        <!-- Latency / Status Banner -->
+        <div id="scan-status" class="hidden mt-4 p-3 rounded-lg text-xs flex items-center justify-between bg-stone-100 text-stone-700">
+          <span id="scan-status-text">Идет распознавание...</span>
+          <span id="scan-latency" class="font-mono font-bold text-wine-700"></span>
+        </div>
+      </div>
+
+      <!-- Right Column: Recognition Result Card & AI Sommelier -->
+      <div class="lg:col-span-6 space-y-6">
+        
+        <!-- Detected Wine Card -->
+        <div id="wine-card" class="hidden bg-white rounded-2xl p-6 shadow-sm border border-stone-200 transition">
+          <div class="flex items-start justify-between">
+            <div>
+              <span id="wine-category-badge" class="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-wine-100 text-wine-800">
+                Белое сухое
+              </span>
+              <h3 id="wine-name" class="font-serif font-bold text-2xl text-stone-900 mt-2">
+                —
+              </h3>
+              <p id="wine-winery" class="text-sm font-medium text-stone-600">
+                —
+              </p>
+            </div>
+            
+            <!-- Roskachestvo Score Badge -->
+            <div class="flex flex-col items-center bg-gold-400/20 border border-gold-500/30 px-3 py-1.5 rounded-xl">
+              <span class="text-[10px] uppercase font-bold text-gold-600 tracking-wider">Роскачество</span>
+              <span id="wine-score" class="font-serif font-bold text-xl text-stone-900">84.5</span>
+            </div>
+          </div>
+
+          <!-- Attributes Grid -->
+          <div class="grid grid-cols-2 gap-4 my-4 p-3 bg-stone-50 rounded-xl text-xs">
+            <div>
+              <span class="text-stone-500 block">Регион:</span>
+              <span id="wine-region" class="font-semibold text-stone-800">—</span>
+            </div>
+            <div>
+              <span class="text-stone-500 block">Сорта винограда:</span>
+              <span id="wine-grapes" class="font-semibold text-stone-800">—</span>
+            </div>
+          </div>
+
+          <!-- Description -->
+          <p id="wine-description" class="text-sm text-stone-700 leading-relaxed italic font-serif">
+            —
+          </p>
+
+          <!-- Food Pairing Accordion -->
+          <div class="mt-4 pt-4 border-t border-stone-100">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-wine-900 mb-2 flex items-center space-x-1.5">
+              <i data-lucide="utensils" class="w-4 h-4"></i>
+              <span>Гастрономическая пара</span>
+            </h4>
+            <p id="wine-pairing" class="text-xs text-stone-600 leading-normal">
+              —
+            </p>
+          </div>
+        </div>
+
+        <!-- AI Sommelier Chat Section -->
+        <div class="bg-white rounded-2xl p-6 shadow-sm border border-stone-200 flex flex-col h-[400px]">
+          <div class="flex items-center justify-between pb-3 border-b border-stone-100">
+            <div class="flex items-center space-x-2">
+              <div class="w-7 h-7 rounded-full bg-wine-100 text-wine-800 flex items-center justify-center">
+                <i data-lucide="bot" class="w-4 h-4"></i>
+              </div>
+              <span class="font-serif font-bold text-stone-900 text-sm">Цифровой сомелье</span>
+            </div>
+            <span class="text-[10px] text-green-600 font-semibold bg-green-50 px-2 py-0.5 rounded-full">RAG Онлайн</span>
+          </div>
+
+          <!-- Chat messages area -->
+          <div id="chat-messages" class="flex-1 overflow-y-auto py-3 space-y-3 text-xs pr-1">
+            <div class="bg-stone-100 text-stone-800 p-3 rounded-xl rounded-tl-none max-w-[85%]">
+              Здравствуйте! Я ваш персональный сомелье. Отсканируйте этикетку или спросите меня о вкусовом профиле и сочетаниях к любому блюду.
+            </div>
+          </div>
+
+          <!-- Chat input -->
+          <div class="pt-3 border-t border-stone-100 flex items-center space-x-2">
+            <input type="text" id="chat-input" placeholder="Задайте вопрос сомелье..." class="flex-1 text-xs border border-stone-300 rounded-xl px-3 py-2.5 focus:outline-none focus:border-wine-700" onkeydown="if(event.key==='Enter') sendChatMessage()">
+            <button onclick="sendChatMessage()" class="bg-wine-900 hover:bg-wine-800 text-white p-2.5 rounded-xl transition">
+              <i data-lucide="send" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <script>
+    lucide.createIcons();
+
+    let selectedFile = null;
+    let currentWineSlug = null;
+
+    function handleFileSelect(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      selectedFile = file;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const preview = document.getElementById('image-preview');
+        preview.src = e.target.result;
+        preview.classList.remove('hidden');
+        document.getElementById('upload-prompt').classList.add('hidden');
+        document.getElementById('btn-scan').disabled = false;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    async function performScan() {
+      if (!selectedFile) return;
+
+      const btn = document.getElementById('btn-scan');
+      const btnText = document.getElementById('scan-btn-text');
+      const statusDiv = document.getElementById('scan-status');
+      const statusText = document.getElementById('scan-status-text');
+      const latencyText = document.getElementById('scan-latency');
+
+      btn.disabled = true;
+      btnText.innerText = "Идет распознавание через ML воркер...";
+      statusDiv.classList.remove('hidden');
+      statusText.innerText = "Отправка в очередь Redis Streams...";
+      latencyText.innerText = "";
+
+      const formData = new FormData();
+      formData.append("image", selectedFile);
+
+      const startTime = performance.now();
+
+      try {
+        const response = await fetch("/v1/eval/predict", {
+          method: "POST",
+          body: formData,
+        });
+
+        const elapsedMs = Math.round(performance.now() - startTime);
+        latencyText.innerText = `${elapsedMs} мс`;
+
+        if (!response.ok) {
+          statusText.innerText = "Ошибка распознавания";
+          return;
+        }
+
+        const data = await response.json();
+        if (data.slug) {
+          currentWineSlug = data.slug;
+          statusText.innerText = `Найдено вино: ${data.slug}`;
+          await loadWineCard(data.slug);
+        } else {
+          statusText.innerText = "Этикетка не найдена в каталоге";
+        }
+      } catch (err) {
+        statusText.innerText = "Ошибка сети или сервера";
+        console.error(err);
+      } finally {
+        btn.disabled = false;
+        btnText.innerText = "Распознать этикетку";
+      }
+    }
+
+    async function loadWineCard(slug) {
+      try {
+        const res = await fetch(`/api/v1/catalog/wines/${slug}`);
+        if (!res.ok) return;
+        const wine = await res.json();
+
+        document.getElementById('wine-card').classList.remove('hidden');
+        document.getElementById('wine-name').innerText = wine.name;
+        document.getElementById('wine-winery').innerText = wine.winery || "Российская винодельня";
+        document.getElementById('wine-category-badge').innerText = `${wine.category} ${wine.sugar_type || ''}`;
+        document.getElementById('wine-score').innerText = wine.roskachestvo_score || "84.0";
+        document.getElementById('wine-region').innerText = wine.region || "Россия";
+        document.getElementById('wine-grapes').innerText = (wine.grape_varieties || []).join(", ") || "Автохтон";
+        document.getElementById('wine-description').innerText = wine.description || "Гармоничное сбалансированное вино.";
+
+        if (wine.pairings && wine.pairings.length > 0) {
+          const p = wine.pairings[0];
+          document.getElementById('wine-pairing').innerText = `${p.dish_name}: ${p.recommendation_reason || ''}`;
+        }
+      } catch (e) {
+        console.error("Failed to load wine card:", e);
+      }
+    }
+
+    async function sendChatMessage() {
+      const input = document.getElementById('chat-input');
+      const text = input.value.trim();
+      if (!text) return;
+
+      const container = document.getElementById('chat-messages');
+
+      // Add user message
+      const userBubble = document.createElement('div');
+      userBubble.className = "bg-wine-900 text-white p-3 rounded-xl rounded-tr-none max-w-[85%] ml-auto";
+      userBubble.innerText = text;
+      container.appendChild(userBubble);
+      input.value = "";
+      container.scrollTop = container.scrollHeight;
+
+      // Loading bubble
+      const loadingBubble = document.createElement('div');
+      loadingBubble.className = "bg-stone-100 text-stone-500 p-2.5 rounded-xl rounded-tl-none max-w-[85%]";
+      loadingBubble.innerText = "Сомелье думает...";
+      container.appendChild(loadingBubble);
+      container.scrollTop = container.scrollHeight;
+
+      try {
+        const resp = await fetch("/api/v1/sommelier/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: [{ role: "user", content: text }],
+            context_wine_slug: currentWineSlug,
+          })
+        });
+        const data = await resp.json();
+        loadingBubble.className = "bg-stone-100 text-stone-800 p-3 rounded-xl rounded-tl-none max-w-[85%]";
+        loadingBubble.innerText = data.reply;
+      } catch (err) {
+        loadingBubble.innerText = "Не удалось связаться с сомелье.";
+      }
+      container.scrollTop = container.scrollHeight;
+    }
+
+    async function loginWithYandex() {
+      try {
+        const res = await fetch("/api/v1/auth/yandex/url");
+        const data = await res.json();
+        if (data.authorization_url) {
+          window.location.href = data.authorization_url;
+        }
+      } catch (e) {
+        alert("Авторизация через Яндекс временно недоступна в тестовом режиме");
+      }
+    }
+  </script>
+</body>
+</html>

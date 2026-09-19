@@ -1,0 +1,45 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Caches and environments
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+venv/
+.venv/
+env/
+ENV/
+
+# OS and IDE files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment variables & secrets (Zero Secrets)
+.env
+*.env
+!.env.example
+
+# Large Dataset Archives and Raw Media
+Датасет/*.rar
+Датасет/*.zip
+Датасет/prod-svoe-vino-strapi/
+
+# Docker volumes and local data
+pgdata/
+redis_data/
+minio_data/
+clickdata/
+*.npz
+*.npz.sig

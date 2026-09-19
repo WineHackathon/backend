@@ -1,0 +1,120 @@
+"""
+Интеграционные тесты для единого входного клиента/шлюза backend:
+- Чекер /v1/eval/predict (соответствие participant_test.sh)
+- Пользовательский сканер /api/v1/ml/scan с защитой по X-Device-Fingerprint (лимит 5 сканов)
+- Каталог /api/v1/catalog/wines
+- Healthcheck /health
+"""
+import io
+import uuid
+from unittest.mock import AsyncMock, patch, MagicMock
+import pytest
+from fastapi.testclient import TestClient
+
+from backend.app.main import app
+from application.adapters.database.db_session import get_session
+from application.dto.wine import WineDTO
+from application.dto.user import UserDTO
+
+
+@pytest.fixture
+def mock_session():
+    """Мок сессии базы данных для тестирования API без запущенного PostgreSQL."""
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.rollback = AsyncMock()
+    return session
+
+
+@pytest.fixture
+def client(mock_session):
+    """Тестовый клиент FastAPI с переопределенной зависимостью БД."""
+    app.dependency_overrides[get_session] = lambda: mock_session
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
+def test_health_endpoint(client: TestClient):
+    """Проверка доступности healthcheck эндпоинта."""
+    response = client.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert data["service"] == "wine-backend-gateway"
+
+
+def test_eval_predict_endpoint_success(client: TestClient):
+    """Проверка соответствия /v1/eval/predict спецификации participant_test.sh."""
+    fake_image = io.BytesIO(b"\xff\xd8\xff\xe0" + b"\x00" * 100)
+    fake_image.name = "wine.jpg"
+
+    with patch("backend.app.services.ml_dispatcher.MLDispatcher.predict", new_callable=AsyncMock) as mock_predict:
+        mock_predict.return_value = ("shiraz-cru-2022", 0.96, 120)
+
+        response = client.post(
+            "/v1/eval/predict",
+            files={"image": ("wine.jpg", fake_image, "image/jpeg")},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "slug" in data
+        assert data["slug"] == "shiraz-cru-2022"
+
+
+def test_eval_predict_endpoint_fallback_null(client: TestClient):
+    """Проверка /v1/eval/predict при низкой уверенности модели (возврат null)."""
+    fake_image = io.BytesIO(b"\xff\xd8\xff\xe0" + b"\x00" * 100)
+    fake_image.name = "wine.jpg"
+
+    with patch("backend.app.services.ml_dispatcher.MLDispatcher.predict", new_callable=AsyncMock) as mock_predict:
+        mock_predict.return_value = (None, 0.20, 95)
+
+        response = client.post(
+            "/v1/eval/predict",
+            files={"image": ("wine.jpg", fake_image, "image/jpeg")},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["slug"] is None
+
+
+def test_anonymous_scan_rate_limiting(client: TestClient):
+    """
+    Проверка лимита в 5 бесплатных сканирований для анонимного пользователя
+    по заголовку X-Device-Fingerprint и выдачи требования регистрации на 6-й скан.
+    """
+    fake_image_bytes = b"\xff\xd8\xff\xe0" + b"\x00" * 100
+    fingerprint = "test-device-uuid-12345"
+
+    with patch("backend.app.services.rate_limiter.ScanRateLimiter.check_and_increment", new_callable=AsyncMock) as mock_rate_limit, \
+         patch("backend.app.services.ml_dispatcher.MLDispatcher.predict", new_callable=AsyncMock) as mock_predict:
+
+        mock_predict.return_value = ("fanagoria-2020", 0.94, 150)
+
+        # 1-й - 5-й сканы: разрешены
+        mock_rate_limit.return_value = (True, 4)  # (allowed, remaining)
+        resp1 = client.post(
+            "/api/v1/ml/scan",
+            files={"image": ("wine.jpg", io.BytesIO(fake_image_bytes), "image/jpeg")},
+            headers={"X-Device-Fingerprint": fingerprint},
+        )
+        assert resp1.status_code == 200
+        data1 = resp1.json()
+        assert data1["registration_required"] is False
+        assert data1["remaining_scans"] == 4
+
+        # 6-й скан: лимит исчерпан -> registration_required: True
+        mock_rate_limit.return_value = (False, 0)
+        resp6 = client.post(
+            "/api/v1/ml/scan",
+            files={"image": ("wine.jpg", io.BytesIO(fake_image_bytes), "image/jpeg")},
+            headers={"X-Device-Fingerprint": fingerprint},
+        )
+        assert resp6.status_code == 200
+        data6 = resp6.json()
+        assert data6["registration_required"] is True
+        assert data6["remaining_scans"] == 0

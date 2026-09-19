@@ -1,0 +1,190 @@
+services:
+  # ============================================================================
+  # База данных: PostgreSQL 16
+  # ============================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: wine_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wine_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_this_in_production}
+      POSTGRES_DB: ${POSTGRES_DB:-wine_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wine_admin} -d ${POSTGRES_DB:-wine_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================================
+  # Кэш и брокер очередей: Redis 7 с персистентностью AOF
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: wine_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --appendfsync everysec
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ============================================================================
+  # Объектное хранилище S3: MinIO
+  # ============================================================================
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: wine_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_secure_password_123}
+    volumes:
+      - minio_data:/data
+    networks:
+      - backend-net
+    ports:
+      - "9001:9001"
+
+  createbuckets:
+    image: quay.io/minio/mc:latest
+    container_name: wine_minio_init
+    depends_on:
+      - minio
+    networks:
+      - backend-net
+    entrypoint: >
+      /bin/sh -c "
+      sleep 2;
+      /usr/bin/mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minio_admin} ${MINIO_ROOT_PASSWORD:-minio_secure_password_123};
+      /usr/bin/mc mb --ignore-existing local/${S3_CATALOG_BUCKET:-wine-catalog};
+      /usr/bin/mc mb --ignore-existing local/${S3_SCANS_BUCKET:-wine-scans};
+      /usr/bin/mc anonymous set download local/${S3_CATALOG_BUCKET:-wine-catalog};
+      exit 0;
+      "
+
+  # ============================================================================
+  # Единый Backend API Gateway / BFF
+  # ============================================================================
+  backend:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    container_name: wine_backend
+    restart: unless-stopped
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-wine_admin}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-change_this_in_production}
+      - POSTGRES_DB=${POSTGRES_DB:-wine_db}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SOMMELIER_SERVICE_URL=http://sommelier:8001
+      - ML_SERVICE_URL=http://ml:8002
+      - S3_ENDPOINT_URL=http://minio:9000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - backend-net
+
+  # ============================================================================
+  # Специализированный сервис AI-Сомелье (с WebSocket)
+  # ============================================================================
+  sommelier:
+    build:
+      context: ..
+      dockerfile: sommelier/Dockerfile
+    container_name: wine_sommelier
+    restart: unless-stopped
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-wine_admin}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-change_this_in_production}
+      - POSTGRES_DB=${POSTGRES_DB:-wine_db}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - LLM_API_KEY=${LLM_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - backend-net
+
+  # ============================================================================
+  # Специализированный ML-слой (Векторный поиск, DINOv2 / MobileNetV3)
+  # ============================================================================
+  ml:
+    build:
+      context: ..
+      dockerfile: ml/Dockerfile
+    container_name: wine_ml
+    restart: unless-stopped
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - S3_ENDPOINT_URL=http://minio:9000
+    depends_on:
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    networks:
+      - backend-net
+
+  # ============================================================================
+  # Веб-приложение Frontend (SPA)
+  # ============================================================================
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: wine_frontend
+    restart: unless-stopped
+    networks:
+      - backend-net
+
+  # ============================================================================
+  # Nginx Reverse Proxy / API Gateway (Порт 8080)
+  # ============================================================================
+  gateway:
+    image: nginx:1.27-alpine
+    container_name: wine_gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+      - sommelier
+      - frontend
+    networks:
+      - backend-net
+
+networks:
+  backend-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
