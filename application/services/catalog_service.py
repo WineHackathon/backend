@@ -5,6 +5,7 @@ import uuid
 from typing import Sequence
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from application.adapters.database.models.wine import Wine
 from application.adapters.database.repositories.wine_repo import WineRepository
 from application.adapters.database.transaction_manager import TransactionManager
 from application.dto.wine import (
@@ -27,7 +28,7 @@ class CatalogService:
         self.tm = TransactionManager(session)
 
     @staticmethod
-    def to_dto(wine) -> WineDTO:
+    def to_dto(wine: Wine) -> WineDTO:
         """Преобразование модели Wine в компактный WineDTO."""
         return WineDTO(
             id=wine.id,
@@ -50,7 +51,7 @@ class CatalogService:
         )
 
     @classmethod
-    def to_detail_dto(cls, wine) -> WineDetailDTO:
+    def to_detail_dto(cls, wine: Wine) -> WineDetailDTO:
         """Преобразование модели Wine в полный WineDetailDTO."""
         base_dto = cls.to_dto(wine)
         pairings = [

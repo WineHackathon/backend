@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from application.adapters.database.models.cellar import UserCellar
+from application.adapters.database.models.cellar import UserCellar, CellarStatus
 
 
 class CellarRepository:
@@ -35,7 +35,7 @@ class CellarRepository:
     async def get_user_items(
         self,
         user_id: uuid.UUID,
-        status: str | None = None,
+        status: CellarStatus | str | None = None,
     ) -> Sequence[UserCellar]:
         """Получение всех вин пользователя в погребе с возможностью фильтрации по статусу."""
         stmt = (
@@ -44,8 +44,9 @@ class CellarRepository:
             .options(selectinload(UserCellar.wine))
             .order_by(UserCellar.created_at.desc())
         )
-        if status:
-            stmt = stmt.where(UserCellar.status == status)
+        if status is not None:
+            status_val = status.value if isinstance(status, CellarStatus) else status
+            stmt = stmt.where(UserCellar.status == status_val)
 
         res = await self.session.execute(stmt)
         return res.scalars().all()
@@ -54,15 +55,16 @@ class CellarRepository:
         self,
         user_id: uuid.UUID,
         wine_id: uuid.UUID,
-        status: str,
+        status: CellarStatus | str,
     ) -> UserCellar | None:
         """Поиск позиции по пользователю, вину и статусу."""
+        status_val = status.value if isinstance(status, CellarStatus) else status
         stmt = (
             select(UserCellar)
             .where(
                 UserCellar.user_id == user_id,
                 UserCellar.wine_id == wine_id,
-                UserCellar.status == status,
+                UserCellar.status == status_val,
             )
         )
         res = await self.session.execute(stmt)

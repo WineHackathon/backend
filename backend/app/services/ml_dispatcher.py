@@ -34,16 +34,10 @@ class MLDispatcher:
 
         # Если Redis доступен, отправляем задачу через Redis Streams RPC
         if self.redis:
+            pubsub = self.redis.pubsub()
+            response_channel = f"ml:response:{req_id}"
             try:
-                task_payload = {
-                    "request_id": req_id,
-                    "image_id": img_id,
-                    "image_bytes_len": len(image_bytes),
-                }
-
                 # Подписка на Pub/Sub канал ответа
-                pubsub = self.redis.pubsub()
-                response_channel = f"ml:response:{req_id}"
                 await pubsub.subscribe(response_channel)
 
                 # Публикация задачи в стрим
@@ -60,15 +54,18 @@ class MLDispatcher:
                     msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.1)
                     if msg and msg["type"] == "message":
                         data = json.loads(msg["data"])
-                        await pubsub.unsubscribe(response_channel)
                         latency_ms = int((time.perf_counter() - start_time) * 1000)
                         return data.get("slug"), data.get("confidence", 0.0), latency_ms
                     await asyncio.sleep(0.01)
 
-                await pubsub.unsubscribe(response_channel)
-
             except Exception as e:
                 logger.warning(f"Ошибка RPC через Redis: {e}. Применение fallback-распознавания.")
+            finally:
+                try:
+                    await pubsub.unsubscribe(response_channel)
+                    await pubsub.close()
+                except Exception:
+                    pass
 
         # Fallback / In-memory эвристика при отсутствии запущенного внешнего воркера
         latency_ms = int((time.perf_counter() - start_time) * 1000)

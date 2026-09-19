@@ -130,12 +130,16 @@ class WineRepository:
         if category:
             stmt = stmt.where(Wine.category.ilike(f"%{escape_like_pattern(category)}%", escape="\\"))
 
-        # Выбираем вина с заполненной вкусовой матрицей
-        stmt = stmt.where(
-            Wine.sweetness.isnot(None),
-            Wine.body.isnot(None),
-            Wine.acidity.isnot(None),
-        ).limit(limit * 3)
+        # Выбираем вина с заполненной вкусовой матрицей, отдавая приоритет качественным винам с оценкой
+        stmt = (
+            stmt.where(
+                Wine.sweetness.isnot(None),
+                Wine.body.isnot(None),
+                Wine.acidity.isnot(None),
+            )
+            .order_by(Wine.roskachestvo_score.desc().nullslast())
+            .limit(max(limit * 5, 50))
+        )
 
         res = await self.session.execute(stmt)
         candidates = list(res.scalars().all())

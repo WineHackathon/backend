@@ -11,13 +11,7 @@ if TYPE_CHECKING:
     from .wine import Wine
 
 
-class CellarStatus(str, enum.Enum):
-    """
-    Статус позиции в личном винном погребе или вишлисте.
-    """
-    IN_CELLAR = "in_cellar"
-    WISHLIST = "wishlist"
-    TASTED = "tasted"
+from application.entities.user_modes import CellarStatus
 
 
 class UserCellar(Base, UUIDMixin, TimestampMixin):

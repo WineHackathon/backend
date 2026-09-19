@@ -23,21 +23,60 @@ from application.exceptions.domain_exceptions import AuthenticationError, UserAl
 from application.services.user_service import UserService
 
 
+import secrets
+
+
 def hash_password(password: str, salt: str | None = None) -> str:
-    """Хеширование пароля через PBKDF2-HMAC-SHA256 (100,000 итераций)."""
-    used_salt = salt or settings.password_salt
-    derived = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), used_salt.encode("utf-8"), 100_000)
-    return f"pbkdf2_sha256${derived.hex()}"
+    """Хеширование пароля через PBKDF2-HMAC-SHA256 (100,000 итераций) с уникальной криптографической солью."""
+    per_user_salt = salt or secrets.token_hex(16)
+    pepper = settings.password_salt
+    derived = hashlib.pbkdf2_hmac(
+        "sha256",
+        f"{pepper}{password}".encode("utf-8"),
+        per_user_salt.encode("utf-8"),
+        100_000,
+    )
+    return f"pbkdf2_sha256$100000${per_user_salt}${derived.hex()}"
 
 
 def verify_password(password: str, hashed: str, salt: str | None = None) -> bool:
-    """Проверка пароля через PBKDF2-HMAC-SHA256."""
-    if not hashed.startswith("pbkdf2_sha256$"):
+    """Проверка пароля через PBKDF2-HMAC-SHA256 с поддержкой модульного формата crypt и обратной совместимости."""
+    if not hashed or not hashed.startswith("pbkdf2_sha256$"):
         return False
-    used_salt = salt or settings.password_salt
-    expected = hashed.split("$", 1)[1]
-    derived = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), used_salt.encode("utf-8"), 100_000).hex()
-    return hmac.compare_digest(derived, expected)
+    parts = hashed.split("$")
+    pepper = settings.password_salt
+
+    # Стандартный модульный формат: pbkdf2_sha256$<iterations>$<salt>$<hash>
+    if len(parts) == 4 and parts[0] == "pbkdf2_sha256":
+        try:
+            iterations = int(parts[1])
+        except ValueError:
+            return False
+        per_user_salt = parts[2]
+        expected_hash = parts[3]
+        derived = hashlib.pbkdf2_hmac(
+            "sha256",
+            f"{pepper}{password}".encode("utf-8"),
+            per_user_salt.encode("utf-8"),
+            iterations,
+        ).hex()
+        return hmac.compare_digest(derived, expected_hash)
+
+    # Устаревший формат: pbkdf2_sha256$<hash> (глобальная соль/пеппер)
+    elif len(parts) == 2 and parts[0] == "pbkdf2_sha256":
+        used_salt = salt or pepper
+        expected = parts[1]
+        derived_legacy = hashlib.pbkdf2_hmac(
+            "sha256", password.encode("utf-8"), used_salt.encode("utf-8"), 100_000
+        ).hex()
+        if hmac.compare_digest(derived_legacy, expected):
+            return True
+        derived_peppered = hashlib.pbkdf2_hmac(
+            "sha256", f"{pepper}{password}".encode("utf-8"), used_salt.encode("utf-8"), 100_000
+        ).hex()
+        return hmac.compare_digest(derived_peppered, expected)
+
+    return False
 
 
 class TokenService:
@@ -155,7 +194,7 @@ class AuthService:
         user_service = UserService(self.session)
         user_dto = await user_service.create_user(
             email=dto.email,
-            password_hash=hash_password(dto.password, salt=self.password_salt),
+            password_hash=hash_password(dto.password),
             first_name=dto.first_name,
             last_name=dto.last_name,
         )
@@ -165,7 +204,7 @@ class AuthService:
     async def login(self, dto: LoginRequestDTO) -> tuple[UserDTO, TokenPairDTO]:
         """Вход пользователя по email и паролю."""
         user = await self.user_repo.get_by_email(dto.email)
-        if not user or not user.password_hash or not verify_password(dto.password, user.password_hash, salt=self.password_salt):
+        if not user or not user.password_hash or not verify_password(dto.password, user.password_hash):
             raise AuthenticationError("Неверный email или пароль.")
 
         user_dto = UserService.to_dto(user)

@@ -1,7 +1,7 @@
 """
 Конфигурация единого backend-сервиса (API Gateway / BFF).
 """
-import os
+from pydantic import Field, AliasChoices
 from pydantic_settings import BaseSettings
 
 
@@ -19,38 +19,48 @@ class Settings(BaseSettings):
     ]
 
     # Auth & JWT
-    jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", "wine_hackathon_super_secret_jwt_key_32_chars")
+    jwt_secret_key: str = "wine_hackathon_super_secret_jwt_key_32_chars"
     jwt_algorithm: str = "HS256"
-    jwt_access_token_expire_minutes: int = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
-    jwt_refresh_token_expire_days: int = int(os.getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "30"))
-    password_salt: str = os.getenv("PASSWORD_SALT", "wine_salt_hackathon_2026")
+    jwt_access_token_expire_minutes: int = 60
+    jwt_refresh_token_expire_days: int = 30
+    password_salt: str = "wine_salt_hackathon_2026"
 
     # Upload & Scanner
     max_upload_size_mb: int = 15
 
     # Redis
-    redis_host: str = os.getenv("REDIS_HOST", "localhost")
-    redis_port: int = int(os.getenv("REDIS_PORT", "6379"))
-    redis_password: str | None = os.getenv("REDIS_PASSWORD", None)
+    redis_host: str = "localhost"
+    redis_port: int = 6379
+    redis_password: str | None = None
 
     # S3 Storage (FirstVDS / AWS S3 compatible)
-    s3_endpoint_url: str = os.getenv("S3_ENDPOINT_URL", "https://s3.firstvds.ru:443")
-    s3_access_key: str = os.getenv("S3_AWS_ACCESS_KEY_ID") or os.getenv("S3_ACCESS_KEY", "")
-    s3_secret_key: str = os.getenv("S3_AWS_SECRET_ACCESS_KEY") or os.getenv("S3_SECRET_KEY", "")
-    s3_bucket_name: str = os.getenv("S3_BUCKET_NAME", "wine-hack")
-    s3_region_name: str = os.getenv("S3_REGION_NAME", "ru-central-1")
-    s3_scans_bucket: str = os.getenv("S3_SCANS_BUCKET", os.getenv("S3_BUCKET_NAME", "wine-hack"))
-    s3_catalog_bucket: str = os.getenv("S3_CATALOG_BUCKET", os.getenv("S3_BUCKET_NAME", "wine-hack"))
+    s3_endpoint_url: str = "https://s3.firstvds.ru:443"
+    s3_access_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("S3_ACCESS_KEY", "S3_AWS_ACCESS_KEY_ID"),
+    )
+    s3_secret_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("S3_SECRET_KEY", "S3_AWS_SECRET_ACCESS_KEY"),
+    )
+    s3_bucket_name: str = "wine-hack"
+    s3_region_name: str = "ru-central-1"
+    s3_scans_bucket: str = "wine-hack"
+    s3_catalog_bucket: str = "wine-hack"
 
     # Sommelier & ML Services URLs
-    sommelier_service_url: str = os.getenv("SOMMELIER_SERVICE_URL", "http://sommelier:8001")
-    ml_service_url: str = os.getenv("ML_SERVICE_URL", "http://ml:8002")
+    sommelier_service_url: str = "http://sommelier:8001"
+    ml_service_url: str = "http://ml:8002"
 
     # Rate limiting for anonymous users
     anon_scan_limit: int = 5
     anon_scan_ttl_seconds: int = 86400  # 24 часа
 
-    model_config = {"env_file": ".env", "extra": "ignore"}
+    model_config = {
+        "env_file": ".env",
+        "extra": "ignore",
+        "case_sensitive": False,
+    }
 
 
 settings = Settings()

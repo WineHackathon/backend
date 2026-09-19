@@ -91,9 +91,11 @@ def test_anonymous_scan_rate_limiting(client: TestClient):
     fingerprint = "test-device-uuid-12345"
 
     with patch("backend.app.services.rate_limiter.ScanRateLimiter.check_and_increment", new_callable=AsyncMock) as mock_rate_limit, \
-         patch("backend.app.services.ml_dispatcher.MLDispatcher.predict", new_callable=AsyncMock) as mock_predict:
+         patch("backend.app.services.ml_dispatcher.MLDispatcher.predict", new_callable=AsyncMock) as mock_predict, \
+         patch("application.services.catalog_service.CatalogService.get_by_slug", new_callable=AsyncMock) as mock_get_slug:
 
         mock_predict.return_value = ("fanagoria-2020", 0.94, 150)
+        mock_get_slug.return_value = None
 
         # 1-й - 5-й сканы: разрешены
         mock_rate_limit.return_value = (True, 4)  # (allowed, remaining)

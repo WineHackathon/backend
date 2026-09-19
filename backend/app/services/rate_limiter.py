@@ -43,8 +43,12 @@ class ScanRateLimiter:
             # Атомарный инкремент в Redis
             current = await self.redis.incr(key)
             if current == 1:
-                # Устанавливаем TTL 24 часа для первой попытки
+                # Устанавливаем TTL для первой попытки
                 await self.redis.expire(key, self.ttl)
+            else:
+                ttl = await self.redis.ttl(key)
+                if ttl == -1:
+                    await self.redis.expire(key, self.ttl)
 
             if current <= self.limit:
                 remaining = self.limit - current

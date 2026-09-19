@@ -222,15 +222,30 @@ async def test_auth_service_security_and_tokens():
     with pytest.raises(AuthenticationError, match="Недействительный тип токена"):
         await service.refresh_tokens(RefreshTokenRequestDTO(refresh_token=tokens.access_token))
 
-    # 5. Проверка хеширования паролей: чистый PBKDF2 (без устаревшего SHA-256)
+    # 5. Проверка хеширования паролей: модульный crypt PBKDF2 с уникальной солью на пользователя
     pwd = "superSecretPassword123"
-    new_hash = hash_password(pwd)
-    assert new_hash.startswith("pbkdf2_sha256$")
-    assert verify_password(pwd, new_hash) is True
-    assert verify_password("wrongPassword", new_hash) is False
+    hash1 = hash_password(pwd)
+    hash2 = hash_password(pwd)
+
+    # Уникальная криптографическая соль: одинаковый пароль дает разные хеши
+    assert hash1 != hash2
+    assert hash1.startswith("pbkdf2_sha256$100000$")
+    assert hash2.startswith("pbkdf2_sha256$100000$")
+
+    # Проверка извлечения соли и валидации
+    assert verify_password(pwd, hash1) is True
+    assert verify_password(pwd, hash2) is True
+    assert verify_password("wrongPassword", hash1) is False
+
+    # Обратная совместимость с устаревшим 2-элементным форматом pbkdf2_sha256$<hash>
+    import hashlib
+    from backend.app.config import settings
+    legacy_derived = hashlib.pbkdf2_hmac("sha256", pwd.encode("utf-8"), settings.password_salt.encode("utf-8"), 100_000).hex()
+    legacy_hash_format = f"pbkdf2_sha256${legacy_derived}"
+    assert verify_password(pwd, legacy_hash_format) is True
 
     # Невалидный / устаревший хеш без префикса pbkdf2_sha256$ должен отклоняться
-    legacy_hash = "someOldSha256OrInvalidHash"
-    assert verify_password(pwd, legacy_hash) is False
+    invalid_hash = "someOldSha256OrInvalidHash"
+    assert verify_password(pwd, invalid_hash) is False
 
 

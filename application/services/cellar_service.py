@@ -4,7 +4,7 @@
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from application.adapters.database.models.cellar import UserCellar
+from application.adapters.database.models.cellar import UserCellar, CellarStatus
 from application.adapters.database.repositories.cellar_repo import CellarRepository
 from application.adapters.database.repositories.wine_repo import WineRepository
 from application.adapters.database.transaction_manager import TransactionManager
@@ -37,7 +37,7 @@ class CellarService:
             wine=wine_dto,
         )
 
-    async def list_items(self, user_id: uuid.UUID, status: str | None = None) -> list[CellarItemDTO]:
+    async def list_items(self, user_id: uuid.UUID, status: CellarStatus | str | None = None) -> list[CellarItemDTO]:
         """Получение списка вин в погребе пользователя."""
         items = await self.cellar_repo.get_user_items(user_id, status=status)
         return [self.to_dto(i) for i in items]
