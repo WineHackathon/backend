@@ -1,9 +1,7 @@
-"""
-Сущность позиции в личном погребе пользователя.
-"""
+import enum
 import uuid
 from typing import TYPE_CHECKING
-from sqlalchemy import String, Text, Integer, ForeignKey, UniqueConstraint
+from sqlalchemy import String, Text, Integer, ForeignKey, UniqueConstraint, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, UUIDMixin, TimestampMixin, GUID
@@ -11,6 +9,15 @@ from .base import Base, UUIDMixin, TimestampMixin, GUID
 if TYPE_CHECKING:
     from .user import User
     from .wine import Wine
+
+
+class CellarStatus(str, enum.Enum):
+    """
+    Статус позиции в личном винном погребе или вишлисте.
+    """
+    IN_CELLAR = "in_cellar"
+    WISHLIST = "wishlist"
+    TASTED = "tasted"
 
 
 class UserCellar(Base, UUIDMixin, TimestampMixin):
@@ -33,9 +40,9 @@ class UserCellar(Base, UUIDMixin, TimestampMixin):
         nullable=False,
         comment="Идентификатор вина в каталоге",
     )
-    status: Mapped[str] = mapped_column(
-        String(50),
-        default="in_cellar",
+    status: Mapped[CellarStatus] = mapped_column(
+        SQLEnum(CellarStatus, native_enum=False, length=50, values_callable=lambda x: [e.value for e in x]),
+        default=CellarStatus.IN_CELLAR,
         nullable=False,
         comment="Статус позиции: in_cellar (в погребе), wishlist (желаемое), tasted (дегустировано)",
     )
