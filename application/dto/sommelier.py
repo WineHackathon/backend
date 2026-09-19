@@ -49,3 +49,4 @@ class SommelierChatResponseDTO(BaseModel):
     reply: str
     recommended_slugs: list[str] = Field(default_factory=list)
     food_pairings: list[str] = Field(default_factory=list)
+    registration_required: bool = False

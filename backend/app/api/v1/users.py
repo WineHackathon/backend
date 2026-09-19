@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.adapters.database.db_session import get_session
 from application.adapters.database.repositories.scan_repo import ScanRepository
-from application.dto.user import UserDTO
+from application.adapters.database.repositories.preference_repo import PreferenceRepository
+from application.dto.user import UserDTO, UserPreferenceHistoryDTO
 from application.dto.cellar import CellarItemDTO, CellarItemCreateDTO
 from application.dto.scan import ScanHistoryItemDTO
 from application.services.user_service import UserService
@@ -82,4 +83,25 @@ async def get_my_scans(
             created_at=s.created_at,
         )
         for s in scans
+    ]
+
+
+@router.get("/preferences", response_model=list[UserPreferenceHistoryDTO], summary="Get user sommelier preference history")
+async def get_my_preferences(
+    limit: int = Query(10, ge=1, le=50),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_session),
+):
+    """История сырых предпочтений и рекомендаций диалогов с сомелье (сырые данные)."""
+    repo = PreferenceRepository(session)
+    items = await repo.get_by_user_id(user_id, limit=limit)
+    return [
+        UserPreferenceHistoryDTO(
+            id=item.id,
+            session_id=item.session_id,
+            raw_answers=item.raw_answers,
+            recommended_slugs=item.recommended_slugs,
+            created_at=item.created_at,
+        )
+        for item in items
     ]

@@ -2,6 +2,7 @@
 DTO схемы для пользователей и вкусового профиля (Taste Profile).
 """
 import uuid
+from datetime import datetime
 from pydantic import BaseModel, Field
 
 
@@ -26,5 +27,16 @@ class UserDTO(BaseModel):
     is_active: bool = True
     is_admin: bool = False
     taste_profile: dict = Field(default_factory=dict)
+
+    model_config = {"from_attributes": True}
+
+
+class UserPreferenceHistoryDTO(BaseModel):
+    """Запись истории предпочтений пользователя (сессии сомелье)."""
+    id: uuid.UUID
+    session_id: str
+    raw_answers: dict = Field(default_factory=dict)
+    recommended_slugs: list[str] = Field(default_factory=list)
+    created_at: datetime
 
     model_config = {"from_attributes": True}

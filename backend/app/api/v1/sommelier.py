@@ -163,6 +163,15 @@ async def chat_with_sommelier(
     """
     HTTP проксирование диалога в специализированный сервис sommelier.
     """
+    # Проверка авторизации: неавторизованным возвращаем требование регистрации
+    if not user_id:
+        return SommelierChatResponseDTO(
+            reply="Чтобы получить персонализированную рекомендацию вин от цифрового сомелье, пожалуйста, зарегистрируйтесь или войдите в аккаунт.",
+            recommended_slugs=[],
+            food_pairings=[],
+            registration_required=True,
+        )
+
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(

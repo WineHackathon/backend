@@ -118,3 +118,43 @@ def test_anonymous_scan_rate_limiting(client: TestClient):
         data6 = resp6.json()
         assert data6["registration_required"] is True
         assert data6["remaining_scans"] == 0
+
+
+def test_sommelier_chat_unauthenticated_registration_required(client: TestClient):
+    """
+    Проверка требования регистрации для неавторизованного пользователя в чате сомелье.
+    """
+    payload = {
+        "messages": [{"role": "user", "content": "Посоветуй белое сухое к рыбе"}]
+    }
+    resp = client.post("/api/v1/sommelier/chat", json=payload)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["registration_required"] is True
+    assert "зарегистрируйтесь" in data["reply"].lower()
+
+
+def test_sommelier_onboarding_unauthenticated_step5(client: TestClient):
+    """
+    Проверка пейволла на 5 шаге онбординга для неавторизованного пользователя.
+    """
+    payload = {
+        "answer": {
+            "step": 5,
+            "code": "aromas",
+            "answer": "Спелые ягоды и вишня"
+        },
+        "answers_history": {
+            "category": "Красное",
+            "sweetness": "Сухое",
+            "body": "Плотное",
+            "acidity": "Больше свежести"
+        }
+    }
+    resp = client.post("/api/v1/sommelier/onboarding/answer", json=payload)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["completed"] is True
+    assert data["registration_required"] is True
+    assert data["candidates"] == []
+

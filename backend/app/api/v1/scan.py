@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, File, Header, Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.adapters.database.db_session import get_session
-from application.adapters.database.models.scan_history import UserScanHistory
+from application.adapters.database.models.scan_history import UserScanHistory, ScanStatus
 from application.adapters.database.repositories.scan_repo import ScanRepository
 from application.adapters.database.transaction_manager import TransactionManager
 from application.dto.scan import ScanResultDTO
@@ -85,7 +85,7 @@ async def scan_wine_label(
         latency_ms=latency_ms,
         device_fingerprint=x_device_fingerprint,
         ip_address=client_ip,
-        status="success" if predicted_slug else "not_found",
+        status=ScanStatus.SUCCESS if predicted_slug else ScanStatus.FAILED,
     )
     async with tm:
         await scan_repo.save(scan_record)
