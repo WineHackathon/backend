@@ -42,24 +42,18 @@ def verify_password(password: str, hashed: str, salt: str | None = None) -> bool
     return hmac.compare_digest(legacy, hashed)
 
 
-class AuthService:
-    """Сервис аутентификации пользователей."""
+class TokenService:
+    """Сервис создания, подписи и верификации JWT токенов (не требует сессии БД)."""
 
     def __init__(
         self,
-        session: AsyncSession | None = None,
         jwt_secret: str | None = None,
         jwt_algorithm: str | None = None,
-        password_salt: str | None = None,
         access_token_expire_minutes: int | None = None,
         refresh_token_expire_days: int | None = None,
     ) -> None:
-        self.session = session
-        self.user_repo = UserRepository(session) if session else None
-        self.tm = TransactionManager(session) if session else None
         self.jwt_secret = jwt_secret or settings.jwt_secret_key
         self.jwt_algorithm = jwt_algorithm or settings.jwt_algorithm
-        self.password_salt = password_salt or settings.password_salt
         self.access_token_expire_minutes = (
             access_token_expire_minutes or settings.jwt_access_token_expire_minutes
         )
@@ -109,6 +103,42 @@ class AuthService:
         if payload.type != "access":
             raise AuthenticationError("Недействительный тип токена. Ожидается access токен.")
         return payload
+
+
+class AuthService:
+    """Сервис аутентификации пользователей."""
+
+    def __init__(
+        self,
+        session: AsyncSession,
+        token_service: TokenService | None = None,
+        password_salt: str | None = None,
+    ) -> None:
+        self.session: AsyncSession = session
+        self.user_repo: UserRepository = UserRepository(session)
+        self.tm: TransactionManager = TransactionManager(session)
+        self.token_service: TokenService = token_service or TokenService()
+        self.password_salt: str = password_salt or settings.password_salt
+
+    @property
+    def access_token_expire_minutes(self) -> int:
+        return self.token_service.access_token_expire_minutes
+
+    @property
+    def refresh_token_expire_days(self) -> int:
+        return self.token_service.refresh_token_expire_days
+
+    def create_token_pair(self, user_id: uuid.UUID, is_admin: bool = False) -> TokenPairDTO:
+        """Делегирование создания токенов в TokenService."""
+        return self.token_service.create_token_pair(user_id, is_admin=is_admin)
+
+    def decode_token(self, token: str) -> TokenPayloadDTO:
+        """Делегирование декодирования токена в TokenService."""
+        return self.token_service.decode_token(token)
+
+    def decode_access_token(self, token: str) -> TokenPayloadDTO:
+        """Делегирование декодирования access токена в TokenService."""
+        return self.token_service.decode_access_token(token)
 
     async def register(self, dto: RegisterRequestDTO) -> tuple[UserDTO, TokenPairDTO]:
         """Регистрация нового пользователя с выдачей токенов."""

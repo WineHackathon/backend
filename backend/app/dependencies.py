@@ -32,7 +32,7 @@ def get_ml_dispatcher(redis_client: redis.Redis | None = Depends(get_redis_clien
     return MLDispatcher(redis_client)
 
 
-from application.services.auth_service import AuthService
+from application.services.auth_service import TokenService
 
 async def get_optional_user_id(
     auth: HTTPAuthorizationCredentials | None = Depends(security),
@@ -45,8 +45,8 @@ async def get_optional_user_id(
     if not auth:
         return None
     try:
-        service = AuthService()
-        payload = service.decode_access_token(auth.credentials)
+        token_service = TokenService()
+        payload = token_service.decode_access_token(auth.credentials)
         return payload.sub
     except Exception:
         return None

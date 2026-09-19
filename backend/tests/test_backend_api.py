@@ -165,12 +165,12 @@ def test_token_type_confusion_rejection(client: TestClient):
     Попытка использовать refresh_token вместо access_token для доступа к /api/v1/users/me
     должна отклоняться со статусом 401 Unauthorized.
     """
-    from application.services.auth_service import AuthService
+    from application.services.auth_service import TokenService
     import uuid
 
-    service = AuthService()
+    token_service = TokenService()
     user_id = uuid.uuid4()
-    tokens = service.create_token_pair(user_id)
+    tokens = token_service.create_token_pair(user_id)
 
     # 1. Запрос с refresh_token должен быть отклонен (401)
     resp_refresh = client.get(
@@ -187,13 +187,13 @@ def test_auth_refresh_endpoint_success_and_rejection(client: TestClient):
     - Обновление с валидным refresh_token возвращает 200 и новые токены.
     - Обновление с access_token отклоняется с кодом 401.
     """
-    from application.services.auth_service import AuthService
+    from application.services.auth_service import TokenService
     from application.adapters.database.models.user import User
     import uuid
 
-    service = AuthService()
+    token_service = TokenService()
     user_id = uuid.uuid4()
-    tokens = service.create_token_pair(user_id)
+    tokens = token_service.create_token_pair(user_id)
 
     # 1. Попытка рефреша с access_token -> 401
     resp_bad = client.post(
