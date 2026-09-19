@@ -7,9 +7,9 @@ import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 import jwt
+from pydantic_settings import BaseSettings
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.config import settings
 from application.adapters.database.repositories.user_repo import UserRepository
 from application.adapters.database.transaction_manager import TransactionManager
 from application.dto.auth import (
@@ -22,6 +22,24 @@ from application.dto.auth import (
 from application.dto.user import UserDTO
 from application.exceptions.domain_exceptions import AuthenticationError, UserAlreadyExists
 from application.services.user_service import UserService
+
+
+class AuthSettings(BaseSettings):
+    """Настройки аутентификации и JWT токенов (независимы от веб-фреймворка)."""
+    jwt_secret_key: str = "wine_hackathon_super_secret_jwt_key_32_chars"
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_minutes: int = 60
+    jwt_refresh_token_expire_days: int = 30
+    password_salt: str = "wine_salt_hackathon_2026"
+
+    model_config = {
+        "env_file": ".env",
+        "extra": "ignore",
+        "case_sensitive": False,
+    }
+
+
+auth_settings = AuthSettings()
 
 
 def hash_password(password: str) -> str:
@@ -61,7 +79,7 @@ def verify_password(password: str, hashed: str) -> bool:
     # Устаревший 2-элементный формат: pbkdf2_sha256$<hash> (обратная совместимость)
     elif len(parts) == 2 and parts[0] == "pbkdf2_sha256":
         expected = parts[1]
-        legacy_salt = getattr(settings, "password_salt", "wine_salt_hackathon_2026")
+        legacy_salt = auth_settings.password_salt
         derived_legacy = hashlib.pbkdf2_hmac(
             "sha256",
             password.encode("utf-8"),
@@ -83,13 +101,13 @@ class TokenService:
         access_token_expire_minutes: int | None = None,
         refresh_token_expire_days: int | None = None,
     ) -> None:
-        self.jwt_secret = jwt_secret or settings.jwt_secret_key
-        self.jwt_algorithm = jwt_algorithm or settings.jwt_algorithm
+        self.jwt_secret = jwt_secret or auth_settings.jwt_secret_key
+        self.jwt_algorithm = jwt_algorithm or auth_settings.jwt_algorithm
         self.access_token_expire_minutes = (
-            access_token_expire_minutes or settings.jwt_access_token_expire_minutes
+            access_token_expire_minutes or auth_settings.jwt_access_token_expire_minutes
         )
         self.refresh_token_expire_days = (
-            refresh_token_expire_days or settings.jwt_refresh_token_expire_days
+            refresh_token_expire_days or auth_settings.jwt_refresh_token_expire_days
         )
 
     def create_token_pair(self, user_id: uuid.UUID, is_admin: bool = False) -> TokenPairDTO:
@@ -133,7 +151,7 @@ class TokenService:
         try:
             payload = jwt.decode(token, self.jwt_secret, algorithms=[self.jwt_algorithm])
             return TokenPayloadDTO.model_validate(payload)
-        except jwt.PyJWTError as e:
+        except (jwt.PyJWTError, Exception) as e:
             raise AuthenticationError(f"Недействительный токен: {str(e)}")
 
     def decode_access_token(self, token: str) -> TokenPayloadDTO:

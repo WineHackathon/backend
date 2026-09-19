@@ -239,8 +239,8 @@ async def test_auth_service_security_and_tokens():
 
     # Обратная совместимость с устаревшим 2-элементным форматом pbkdf2_sha256$<hash>
     import hashlib
-    from backend.app.config import settings
-    legacy_derived = hashlib.pbkdf2_hmac("sha256", pwd.encode("utf-8"), settings.password_salt.encode("utf-8"), 100_000).hex()
+    from application.services.auth_service import auth_settings
+    legacy_derived = hashlib.pbkdf2_hmac("sha256", pwd.encode("utf-8"), auth_settings.password_salt.encode("utf-8"), 100_000).hex()
     legacy_hash_format = f"pbkdf2_sha256${legacy_derived}"
     assert verify_password(pwd, legacy_hash_format) is True
 
