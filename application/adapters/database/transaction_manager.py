@@ -13,11 +13,13 @@ class TransactionManager:
     Менеджер транзакций базы данных.
     
     Пример использования:
-    >>> async with TransactionManager(session) as tm:
-    >>>     await user_repo.save(user)
-    >>>     await cellar_repo.save(item)
-    >>>     # При возникновении ошибки автоматически произойдет rollback.
-    >>>     # При успешном завершении блока автоматически выполнится commit.
+    ```python
+    async with TransactionManager(session) as tm:
+        await user_repo.save(user)
+        await cellar_repo.save(item)
+        # При возникновении ошибки автоматически произойдет rollback.
+        # При успешном завершении блока автоматически выполнится commit.
+    ```
     """
 
     def __init__(self, session: AsyncSession) -> None:
