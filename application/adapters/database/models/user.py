@@ -1,9 +1,7 @@
-"""
-Сущность пользователя платформы с поддержкой вкусового профиля (Taste Profile).
-"""
+import enum
 import uuid
 from typing import TYPE_CHECKING
-from sqlalchemy import String, Boolean, JSON
+from sqlalchemy import String, Boolean, JSON, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, UUIDMixin, TimestampMixin
@@ -12,6 +10,15 @@ if TYPE_CHECKING:
     from .cellar import UserCellar
     from .scan_history import UserScanHistory
     from .preference_history import UserPreferenceHistory
+
+
+class UserRole(str, enum.Enum):
+    """
+    Роль пользователя в системе.
+    """
+    USER = "user"
+    ADMIN = "admin"
+    SOMMELIER = "sommelier"
 
 
 class User(Base, UUIDMixin, TimestampMixin):
@@ -68,6 +75,12 @@ class User(Base, UUIDMixin, TimestampMixin):
         default=False,
         nullable=False,
         comment="Флаг роли администратора",
+    )
+    role: Mapped[UserRole] = mapped_column(
+        SQLEnum(UserRole, native_enum=False, length=50, values_callable=lambda x: [e.value for e in x]),
+        default=UserRole.USER,
+        nullable=False,
+        comment="Роль пользователя: user, admin, sommelier",
     )
 
     # =========================================================================

@@ -1,15 +1,29 @@
-"""
-Сущность гастрономических пар для вина.
-"""
+import enum
 import uuid
 from typing import TYPE_CHECKING
-from sqlalchemy import String, Text, ForeignKey, Index
+from sqlalchemy import String, Text, ForeignKey, Index, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, UUIDMixin, TimestampMixin, GUID
 
 if TYPE_CHECKING:
     from .wine import Wine
+
+
+class FoodCategory(str, enum.Enum):
+    """
+    Категория гастрономического сочетания.
+    """
+    MEAT = "Мясо"
+    FISH = "Рыба"
+    SEAFOOD = "Морепродукты"
+    POULTRY = "Птица"
+    CHEESE = "Сыры"
+    DESSERT = "Десерты"
+    SNACKS = "Закуски"
+    PASTA_PIZZA = "Паста и пицца"
+    VEGETABLES = "Овощи"
+    OTHER = "Другое"
 
 
 class WineFoodPairing(Base, UUIDMixin, TimestampMixin):
@@ -25,8 +39,9 @@ class WineFoodPairing(Base, UUIDMixin, TimestampMixin):
         nullable=False,
         comment="Идентификатор связанного вина",
     )
-    food_category: Mapped[str] = mapped_column(
-        String(100),
+    food_category: Mapped[FoodCategory] = mapped_column(
+        SQLEnum(FoodCategory, native_enum=False, length=100, values_callable=lambda x: [e.value for e in x]),
+        default=FoodCategory.OTHER,
         nullable=False,
         comment="Категория блюда (Мясо, Рыба, Сыры, Десерты и др.)",
     )

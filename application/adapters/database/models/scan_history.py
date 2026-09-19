@@ -1,15 +1,22 @@
-"""
-Сущность истории сканирований этикеток вин.
-"""
+import enum
 import uuid
 from typing import TYPE_CHECKING
-from sqlalchemy import String, Text, Float, Integer, ForeignKey, Index
+from sqlalchemy import String, Text, Float, Integer, ForeignKey, Index, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, UUIDMixin, TimestampMixin, GUID
 
 if TYPE_CHECKING:
     from .user import User
+
+
+class ScanStatus(str, enum.Enum):
+    """
+    Статус обработки распознавания этикетки вина.
+    """
+    SUCCESS = "success"
+    FAILED = "failed"
+    RATE_LIMITED = "rate_limited"
 
 
 class UserScanHistory(Base, UUIDMixin, TimestampMixin):
@@ -64,9 +71,9 @@ class UserScanHistory(Base, UUIDMixin, TimestampMixin):
         nullable=True,
         comment="IP адрес клиента для защиты от злоупотреблений",
     )
-    status: Mapped[str] = mapped_column(
-        String(50),
-        default="success",
+    status: Mapped[ScanStatus] = mapped_column(
+        SQLEnum(ScanStatus, native_enum=False, length=50, values_callable=lambda x: [e.value for e in x]),
+        default=ScanStatus.SUCCESS,
         nullable=False,
         comment="Статус обработки: success, failed, rate_limited",
     )

@@ -3,9 +3,10 @@
 """
 import uuid
 from typing import TYPE_CHECKING
-from sqlalchemy import String, Text, Float, Integer, Index, JSON
+from sqlalchemy import String, Text, Float, Integer, Index, JSON, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from application.entities.wine_categories import WineCategory, SugarType
 from .base import Base, UUIDMixin, TimestampMixin
 
 if TYPE_CHECKING:
@@ -33,11 +34,11 @@ class Wine(Base, UUIDMixin, TimestampMixin):
         nullable=False,
         comment="Коммерческое наименование вина",
     )
-    category: Mapped[str] = mapped_column(
-        String(100),
+    category: Mapped[WineCategory] = mapped_column(
+        SQLEnum(WineCategory, native_enum=False, length=100, values_callable=lambda x: [e.value for e in x]),
         nullable=False,
-        default="Тихое",
-        comment="Категория вина (Белое, Красное, Розовое, Игристое)",
+        default=WineCategory.STILL,
+        comment="Категория вина (Белое, Красное, Розовое, Игристое, Тихое)",
     )
     color_desc: Mapped[str | None] = mapped_column(
         String(255),
@@ -73,10 +74,10 @@ class Wine(Base, UUIDMixin, TimestampMixin):
         nullable=True,
         comment="Оценка качества «Винного гида России» Роскачества",
     )
-    sugar_type: Mapped[str | None] = mapped_column(
-        String(50),
+    sugar_type: Mapped[SugarType | None] = mapped_column(
+        SQLEnum(SugarType, native_enum=False, length=50, values_callable=lambda x: [e.value for e in x]),
         nullable=True,
-        comment="Тип по содержанию сахара (Сухое, Полусухое, Полусладкое, Сладкое)",
+        comment="Тип по содержанию сахара (Сухое, Полусухое, Полусладкое, Сладкое, Брют, Экстра брют)",
     )
     vintage_year: Mapped[int | None] = mapped_column(
         Integer,
