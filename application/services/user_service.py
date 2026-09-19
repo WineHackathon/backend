@@ -66,6 +66,7 @@ class UserService:
             raise UserAlreadyExists(dto.email)
 
         user = User(
+            id=uuid.uuid4(),
             email=dto.email.lower().strip(),
             password_hash=dto.password_hash,
             yandex_id=dto.yandex_id,

@@ -33,6 +33,7 @@ class RegisterRequestDTO(BaseModel):
     password: str = Field(min_length=6)
     first_name: str = Field(default="Пользователь")
     last_name: str | None = None
+    device_fingerprint: str | None = Field(default=None, description="Фингерпринт гостя для привязки истории сканирований")
 
 
 class TokenPairDTO(BaseModel):

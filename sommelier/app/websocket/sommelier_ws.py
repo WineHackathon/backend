@@ -6,12 +6,15 @@ WebSocket обработчик (/ws/sommelier) для интерактивног
 3. 5-вопросный интерактивный онбординг.
 """
 import logging
+import uuid
 from contextlib import asynccontextmanager
 from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from application.adapters.database.db_session import create_session
 from application.services.catalog_service import CatalogService
+from application.services.token_service import TokenService
+from application.services.taste_profile_service import TasteProfileService
 from sommelier.app.services.onboarding_service import SommelierOnboardingService
 from sommelier.app.services.recommendation_engine import SommelierRecommendationEngine
 from sommelier.app.services.llm_client import SommelierLLMClient
@@ -50,6 +53,17 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
     recommendation_engine = SommelierRecommendationEngine()
     llm_client = SommelierLLMClient()
     rag_service = SommelierRAGService()
+    token_service = TokenService()
+
+    # Аутентификация через query parameter ?token=...
+    user_id: uuid.UUID | None = None
+    query_token = websocket.query_params.get("token")
+    if query_token:
+        try:
+            payload = token_service.decode_access_token(query_token)
+            user_id = payload.sub
+        except Exception as e:
+            logger.warning(f"Недействительный токен в query params WebSocket: {e}")
 
     answers: dict[str, str] = {}
     current_step = 1
@@ -73,11 +87,49 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
             msg_type = data.get("type")
 
             # -----------------------------------------------------------------
+            # 0. Авторизация в процессе соединения (type: "auth")
+            # -----------------------------------------------------------------
+            if msg_type == "auth":
+                auth_token = data.get("token")
+                if auth_token:
+                    try:
+                        payload = token_service.decode_access_token(auth_token)
+                        user_id = payload.sub
+                        await websocket.send_json({
+                            "type": "auth_success",
+                            "user_id": str(user_id),
+                            "message": "Успешная авторизация в сессии сомелье.",
+                        })
+                    except Exception as e:
+                        logger.warning(f"Ошибка WebSocket auth: {e}")
+                        await websocket.send_json({
+                            "type": "auth_error",
+                            "message": "Недействительный или истекший токен авторизации.",
+                        })
+                else:
+                    await websocket.send_json({
+                        "type": "auth_error",
+                        "message": "Токен не предоставлен.",
+                    })
+                continue
+
+            # -----------------------------------------------------------------
             # 1. Свободный диалог с AI-Копайлотом (type: "message" или "chat")
             # -----------------------------------------------------------------
             if msg_type in ("message", "chat"):
                 user_text = (data.get("content") or data.get("message") or "").strip()
                 if not user_text:
+                    continue
+
+                # Пейволл для неавторизованных пользователей
+                if not user_id:
+                    await websocket.send_json({
+                        "type": "message",
+                        "role": "assistant",
+                        "content": "Чтобы получить персональную рекомендацию от AI-сомелье, пожалуйста, зарегистрируйтесь или войдите в аккаунт.",
+                        "candidates": [],
+                        "registration_required": True,
+                    })
                     continue
 
                 stream_enabled = bool(data.get("stream", False))
@@ -184,7 +236,18 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                         "question": next_q.model_dump(),
                     })
                 else:
-                    # Подбор вин по результатам онбординга
+                    # Завершены 5 вопросов онбординга
+                    # Пейволл для неавторизованных гостей
+                    if not user_id:
+                        await websocket.send_json({
+                            "type": "completed",
+                            "message": "Превосходно! Ваш вкусовой профиль сформирован. Зарегистрируйтесь, чтобы получить персональные винные рекомендации.",
+                            "candidates": [],
+                            "registration_required": True,
+                        })
+                        continue
+
+                    # Для авторизованных пользователей: подбор вин по вкусовой матрице
                     final_candidates = []
                     async with _get_catalog_service() as catalog_service:
                         if catalog_service:
@@ -234,11 +297,33 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                         for c in final_candidates
                     ]
 
+                    # Фоновое сохранение вкусового профиля и сессии предпочтений пользователя в БД
+                    try:
+                        session = create_session()
+                        try:
+                            taste_service = TasteProfileService(session)
+                            session_id = str(uuid.uuid4())
+                            recommended_slugs = [
+                                c.slug if hasattr(c, "slug") else c.get("slug")
+                                for c in final_candidates
+                                if (hasattr(c, "slug") and c.slug) or (isinstance(c, dict) and c.get("slug"))
+                            ]
+                            await taste_service.record_preferences_and_update_profile(
+                                user_id=user_id,
+                                session_id=session_id,
+                                raw_answers=answers,
+                                recommended_slugs=recommended_slugs,
+                            )
+                        finally:
+                            await session.close()
+                    except Exception as exc:
+                        logger.warning(f"Не удалось обновить вкусовой профиль пользователя {user_id}: {exc}")
+
                     await websocket.send_json({
                         "type": "completed",
                         "message": "Превосходно! Ваш вкусовой профиль сформирован. Вот лучшие кандидаты по вашему вкусу:",
                         "candidates": candidates_data,
-                        "registration_prompt": "Зарегистрируйтесь, чтобы сохранить эти вина в личный погреб и отслеживать историю дегустаций!",
+                        "registration_required": False,
                     })
 
             # -----------------------------------------------------------------

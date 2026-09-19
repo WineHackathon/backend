@@ -271,4 +271,88 @@ def test_cellar_item_not_found_returns_404(client: TestClient):
         assert "не найдена" in resp.json()["detail"].lower()
 
 
+def test_yandex_auth_url(client: TestClient):
+    """Проверка эндпоинта получения URL авторизации Яндекс ID."""
+    resp = client.get("/api/v1/auth/yandex/url")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "url" in data
+    assert "oauth.yandex.ru/authorize" in data["url"]
+    assert "client_id" in data
+
+
+def test_yandex_oauth_flow(client: TestClient):
+    """Проверка авторизации через Яндекс ID (POST /api/v1/auth/yandex и GET /api/v1/auth/yandex/callback)."""
+    # 1. POST /api/v1/auth/yandex с тестовым кодом
+    with patch("application.adapters.database.repositories.user_repo.UserRepository.get_by_yandex_id", new_callable=AsyncMock) as mock_get_ya, \
+         patch("application.adapters.database.repositories.user_repo.UserRepository.get_by_email", new_callable=AsyncMock) as mock_get_email, \
+         patch("application.adapters.database.repositories.user_repo.UserRepository.save", new_callable=AsyncMock) as mock_save:
+        mock_get_ya.return_value = None
+        mock_get_email.return_value = None
+
+        resp = client.post(
+            "/api/v1/auth/yandex",
+            json={"code": "test_code_123"},
+            headers={"X-Device-Fingerprint": "fp_test_device_ya"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "user" in data
+        assert "tokens" in data
+        assert data["user"]["email"] == "yandex_code_123@yandex.ru"
+        assert data["tokens"]["access_token"] != ""
+
+    # 2. GET /api/v1/auth/yandex/callback с параметром ?code=...
+    with patch("application.adapters.database.repositories.user_repo.UserRepository.get_by_yandex_id", new_callable=AsyncMock) as mock_get_ya, \
+         patch("application.adapters.database.repositories.user_repo.UserRepository.get_by_email", new_callable=AsyncMock) as mock_get_email, \
+         patch("application.adapters.database.repositories.user_repo.UserRepository.save", new_callable=AsyncMock) as mock_save:
+        mock_get_ya.return_value = None
+        mock_get_email.return_value = None
+
+        resp = client.get(
+            "/api/v1/auth/yandex/callback?code=test_callback_456",
+            headers={"X-Device-Fingerprint": "fp_test_device_ya_cb"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "user" in data
+        assert "tokens" in data
+        assert data["user"]["email"] == "yandex_callback_456@yandex.ru"
+
+
+def test_register_with_device_fingerprint(client: TestClient):
+    """Проверка привязки истории сканирований гостя при регистрации пользователя."""
+    with patch("application.adapters.database.repositories.user_repo.UserRepository.get_by_email", new_callable=AsyncMock) as mock_get_email, \
+         patch("application.adapters.database.repositories.user_repo.UserRepository.save", new_callable=AsyncMock) as mock_save, \
+         patch("application.adapters.database.repositories.scan_repo.ScanRepository.link_guest_scans_to_user", new_callable=AsyncMock) as mock_link:
+        mock_get_email.return_value = None
+        mock_link.return_value = 3
+
+        resp = client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "link.scans@example.com",
+                "password": "secretpassword123",
+                "first_name": "Тестер",
+            },
+            headers={"X-Device-Fingerprint": "guest_device_to_link_99"},
+        )
+        assert resp.status_code == 200
+        assert mock_link.called
+        assert mock_link.call_args[0][0] == "guest_device_to_link_99"
+
+
+@pytest.mark.asyncio
+async def test_ml_dispatcher_mock_mode():
+    """Проверка работы MLDispatcher в режиме mock_mode при отсутствии внешнего воркера."""
+    from backend.app.services.ml_dispatcher import MLDispatcher
+    dispatcher = MLDispatcher(redis_client=None)
+
+    slug, confidence, latency_ms = await dispatcher.predict(b"fake_image_bytes")
+    assert slug == "fanagoriya-100-ottenkov-krasnogo-kaberne-kaberne-sovinon-krasnoe-suhoe-135"
+    assert confidence == 0.94
+    assert latency_ms >= 0
+
+
+
 

@@ -3,7 +3,7 @@
 """
 import uuid
 from typing import Sequence
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.adapters.database.models.scan_history import UserScanHistory
@@ -39,3 +39,17 @@ class ScanRepository:
         )
         res = await self.session.scalar(stmt)
         return res or 0
+
+    async def link_guest_scans_to_user(self, fingerprint: str, user_id: uuid.UUID) -> int:
+        """Привязка ранее совершенных гостевых сканирований (user_id=NULL) к зарегистрированному пользователю."""
+        stmt = (
+            update(UserScanHistory)
+            .where(
+                UserScanHistory.device_fingerprint == fingerprint,
+                UserScanHistory.user_id.is_(None),
+            )
+            .values(user_id=user_id)
+        )
+        res = await self.session.execute(stmt)
+        await self.session.flush()
+        return res.rowcount or 0

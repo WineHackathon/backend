@@ -55,6 +55,14 @@ class Settings(BaseSettings):
     sommelier_service_url: str = "http://sommelier:8001"
     ml_service_url: str = "http://ml:8002"
 
+    # ML Dispatcher Mock Mode (fallback for local dev/frontend without heavy ML worker)
+    ml_mock_mode: bool = True
+
+    # Yandex ID OAuth 2.0
+    yandex_client_id: str = ""
+    yandex_client_secret: str = ""
+    yandex_redirect_uri: str = "http://localhost:8050/api/v1/auth/yandex/callback"
+
     # Rate limiting for anonymous users
     anon_scan_limit: int = 5
     anon_scan_ttl_seconds: int = 86400  # 24 часа

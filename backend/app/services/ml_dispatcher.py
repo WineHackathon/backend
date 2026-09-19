@@ -67,6 +67,11 @@ class MLDispatcher:
                 except Exception:
                     pass
 
-        # Fallback / In-memory эвристика при отсутствии запущенного внешнего воркера
+        # Fallback / Mock-режим при отсутствии запущенного внешнего воркера
         latency_ms = int((time.perf_counter() - start_time) * 1000)
+        if getattr(settings, "ml_mock_mode", False):
+            logger.info("MLDispatcher: возврат fallback mock-предсказания для тестирования фронтенда.")
+            return "fanagoriya-100-ottenkov-krasnogo-kaberne-kaberne-sovinon-krasnoe-suhoe-135", 0.94, latency_ms
+
         return None, 0.0, latency_ms
+

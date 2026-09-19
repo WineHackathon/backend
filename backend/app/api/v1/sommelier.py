@@ -14,6 +14,7 @@ from application.dto.sommelier import (
 )
 from application.services.catalog_service import CatalogService
 from application.services.taste_profile_service import TasteProfileService
+from application.services.onboarding_service import SommelierOnboardingService
 from backend.app.config import settings
 from backend.app.dependencies import get_optional_user_id
 
@@ -21,40 +22,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/sommelier", tags=["Digital Sommelier"])
 
-
-# 5 базовых вопросов оптимального первого диалога
-ONBOARDING_QUESTIONS = [
-    OnboardingQuestionDTO(
-        step=1,
-        code="category",
-        question="Белое, красное, розовое или игристое?",
-        options=["Белое", "Красное", "Розовое", "Игристое"],
-    ),
-    OnboardingQuestionDTO(
-        step=2,
-        code="sweetness",
-        question="Сухое или с остаточной сладостью?",
-        options=["Сухое", "С остаточной сладостью"],
-    ),
-    OnboardingQuestionDTO(
-        step=3,
-        code="body",
-        question="Лёгкое, среднее или плотное?",
-        options=["Лёгкое", "Среднее", "Плотное"],
-    ),
-    OnboardingQuestionDTO(
-        step=4,
-        code="acidity",
-        question="Больше свежести или мягкости?",
-        options=["Больше свежести", "Больше мягкости"],
-    ),
-    OnboardingQuestionDTO(
-        step=5,
-        code="aromas",
-        question="Какие ароматы вам нравятся больше всего?",
-        options=["Спелые ягоды и вишня", "Цитрусы и зеленое яблоко", "Ваниль, дуб и шоколад", "Полевые цветы и минералы"],
-    ),
-]
+onboarding_service = SommelierOnboardingService()
+ONBOARDING_QUESTIONS = SommelierOnboardingService.BASELINE_QUESTIONS
 
 
 @router.get("/onboarding/questions", response_model=list[OnboardingQuestionDTO], summary="Get 5 baseline onboarding questions")
@@ -81,25 +50,8 @@ async def submit_onboarding_answer(
 
     # Проверка, есть ли следующий вопрос
     if step < 5:
-        next_q = ONBOARDING_QUESTIONS[step]
-        # Адаптивная корректировка вопроса в зависимости от категории
-        cat = current_answers.get("category", "").lower()
-        if step == 2 and "красн" in cat:
-            next_q = OnboardingQuestionDTO(
-                step=3,
-                code="body",
-                question="Для красного: предпочитаете плотное танинное или мягкое бархатистое?",
-                options=["Плотное и танинное", "Мягкое и бархатистое"],
-                adaptive=True,
-            )
-        elif step == 3 and "бел" in cat:
-            next_q = OnboardingQuestionDTO(
-                step=4,
-                code="acidity",
-                question="Для белого: важнее яркая кислотность и минеральность или фруктовость?",
-                options=["Яркая кислотность и минеральность", "Фруктовая мягкость"],
-                adaptive=True,
-            )
+        next_step = step + 1
+        next_q = onboarding_service.get_adaptive_question(step=next_step, answers=current_answers)
 
         return OnboardingStateDTO(
             current_step=step,
