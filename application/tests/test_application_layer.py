@@ -165,3 +165,75 @@ async def test_catalog_service_list_wines_with_dto():
     assert len(result.items) == 1
     assert result.items[0].slug == "test-wine"
 
+
+@pytest.mark.asyncio
+async def test_auth_service_security_and_tokens():
+    """Тестирование безопасности AuthService: DTO, Token Type Confusion и PBKDF2."""
+    from application.services.auth_service import AuthService, hash_password, verify_password
+    from application.dto.auth import TokenPayloadDTO, RefreshTokenRequestDTO
+    from application.exceptions.domain_exceptions import AuthenticationError
+
+    mock_session = AsyncMock()
+    service = AuthService(mock_session)
+    user_id = uuid.uuid4()
+
+    # 1. Проверка создания пары токенов и синхронизации expires_in
+    tokens = service.create_token_pair(user_id, is_admin=True)
+    assert tokens.token_type == "Bearer"
+    assert tokens.expires_in == service.access_token_expire_minutes * 60
+
+    # 2. Проверка строгой типизации TokenPayloadDTO
+    access_payload = service.decode_token(tokens.access_token)
+    assert isinstance(access_payload, TokenPayloadDTO)
+    assert access_payload.sub == user_id
+    assert access_payload.type == "access"
+    assert access_payload.is_admin is True
+
+    refresh_payload = service.decode_token(tokens.refresh_token)
+    assert isinstance(refresh_payload, TokenPayloadDTO)
+    assert refresh_payload.type == "refresh"
+
+    # 3. Защита от Token Type Confusion
+    # decode_access_token должен принимать access_token
+    valid_access = service.decode_access_token(tokens.access_token)
+    assert valid_access.sub == user_id
+
+    # decode_access_token ДОЛЖЕН отклонять refresh_token
+    with pytest.raises(AuthenticationError, match="Недействительный тип токена"):
+        service.decode_access_token(tokens.refresh_token)
+
+    # 4. Обновление токенов (refresh_tokens)
+    mock_user = User(
+        id=user_id,
+        email="test@domain.com",
+        first_name="Иван",
+        is_admin=True,
+    )
+    service.user_repo.get_by_id = AsyncMock(return_value=mock_user)
+
+    # Успешный refresh
+    new_user_dto, new_tokens = await service.refresh_tokens(
+        RefreshTokenRequestDTO(refresh_token=tokens.refresh_token)
+    )
+    assert new_user_dto.id == user_id
+    assert new_tokens.access_token != ""
+
+    # Попытка refresh с access токеном должна отклоняться
+    with pytest.raises(AuthenticationError, match="Недействительный тип токена"):
+        await service.refresh_tokens(RefreshTokenRequestDTO(refresh_token=tokens.access_token))
+
+    # 5. Проверка хеширования паролей: PBKDF2 + обратная совместимость со старым SHA-256
+    pwd = "superSecretPassword123"
+    new_hash = hash_password(pwd)
+    assert new_hash.startswith("pbkdf2_sha256$")
+    assert verify_password(pwd, new_hash) is True
+    assert verify_password("wrongPassword", new_hash) is False
+
+    # Legacy SHA-256 хеш
+    import hashlib
+    from backend.app.config import settings
+    legacy_hash = hashlib.sha256(f"{settings.password_salt}{pwd}".encode("utf-8")).hexdigest()
+    assert verify_password(pwd, legacy_hash) is True
+    assert verify_password("wrongPassword", legacy_hash) is False
+
+

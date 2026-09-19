@@ -21,7 +21,12 @@ class Settings(BaseSettings):
     # Auth & JWT
     jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", "wine_hackathon_super_secret_jwt_key_32_chars")
     jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_minutes: int = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+    jwt_refresh_token_expire_days: int = int(os.getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "30"))
     password_salt: str = os.getenv("PASSWORD_SALT", "wine_salt_hackathon_2026")
+
+    # Upload & Scanner
+    max_upload_size_mb: int = 15
 
     # Redis
     redis_host: str = os.getenv("REDIS_HOST", "localhost")

@@ -132,3 +132,46 @@ def test_sommelier_websocket_streaming():
 
         assert len(chunks) > 0
 
+
+def test_sommelier_websocket_catalog_search_with_paginated_dto():
+    """Проверка корректной обработки PaginatedWinesDTO (found.items) в WebSocket диалоге."""
+    from unittest.mock import AsyncMock, patch, MagicMock
+    from contextlib import asynccontextmanager
+    from application.dto.wine import WineDTO, PaginatedWinesDTO
+    import uuid
+
+    mock_wine = WineDTO(
+        id=uuid.uuid4(),
+        slug="kuban-sauvignon",
+        name="Кубань Совиньон Блан",
+        category="Белое",
+        sweetness=1.1,
+        body=2.2,
+        acidity=4.5,
+        oak=1.0,
+        aroma_tags=["цитрус"],
+        flavor_tags=[],
+    )
+    mock_catalog = MagicMock()
+    mock_catalog.list_wines = AsyncMock(return_value=PaginatedWinesDTO(total=1, offset=0, limit=3, items=[mock_wine]))
+    mock_catalog.find_similar_wines = AsyncMock(return_value=[mock_wine])
+
+    @asynccontextmanager
+    async def mock_get_cat():
+        yield mock_catalog
+
+    with patch("sommelier.app.websocket.sommelier_ws._get_catalog_service", side_effect=mock_get_cat):
+        client = TestClient(app)
+        with client.websocket_connect("/ws/sommelier") as websocket:
+            websocket.receive_json()  # welcome
+            websocket.send_json({
+                "type": "message",
+                "content": "Найди похожее на Кубань Совиньон Блан",
+                "stream": False,
+            })
+            resp = websocket.receive_json()
+            assert resp["type"] == "message"
+            assert len(resp["candidates"]) == 1
+            assert resp["candidates"][0]["slug"] == "kuban-sauvignon"
+
+

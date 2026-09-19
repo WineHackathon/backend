@@ -158,3 +158,68 @@ def test_sommelier_onboarding_unauthenticated_step5(client: TestClient):
     assert data["registration_required"] is True
     assert data["candidates"] == []
 
+
+def test_token_type_confusion_rejection(client: TestClient):
+    """
+    Проверка защиты от Token Type Confusion (HIGH-05):
+    Попытка использовать refresh_token вместо access_token для доступа к /api/v1/users/me
+    должна отклоняться со статусом 401 Unauthorized.
+    """
+    from application.services.auth_service import AuthService
+    import uuid
+
+    service = AuthService()
+    user_id = uuid.uuid4()
+    tokens = service.create_token_pair(user_id)
+
+    # 1. Запрос с refresh_token должен быть отклонен (401)
+    resp_refresh = client.get(
+        "/api/v1/users/me",
+        headers={"Authorization": f"Bearer {tokens.refresh_token}"},
+    )
+    assert resp_refresh.status_code == 401
+    assert "авторизация" in resp_refresh.json()["detail"].lower()
+
+
+def test_auth_refresh_endpoint_success_and_rejection(client: TestClient):
+    """
+    Проверка эндпоинта POST /api/v1/auth/refresh:
+    - Обновление с валидным refresh_token возвращает 200 и новые токены.
+    - Обновление с access_token отклоняется с кодом 401.
+    """
+    from application.services.auth_service import AuthService
+    from application.adapters.database.models.user import User
+    import uuid
+
+    service = AuthService()
+    user_id = uuid.uuid4()
+    tokens = service.create_token_pair(user_id)
+
+    # 1. Попытка рефреша с access_token -> 401
+    resp_bad = client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": tokens.access_token},
+    )
+    assert resp_bad.status_code == 401
+
+    # 2. Успешный рефреш с моком пользователя в БД
+    mock_user = User(
+        id=user_id,
+        email="sommelier.user@wine.ru",
+        first_name="Сомелье",
+        is_admin=False,
+    )
+    with patch("application.adapters.database.repositories.user_repo.UserRepository.get_by_id", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = mock_user
+        resp_ok = client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": tokens.refresh_token},
+        )
+        assert resp_ok.status_code == 200
+        data = resp_ok.json()
+        assert "tokens" in data
+        assert "user" in data
+        assert data["user"]["email"] == "sommelier.user@wine.ru"
+        assert data["tokens"]["access_token"] != ""
+
+

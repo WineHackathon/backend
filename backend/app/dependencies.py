@@ -32,23 +32,22 @@ def get_ml_dispatcher(redis_client: redis.Redis | None = Depends(get_redis_clien
     return MLDispatcher(redis_client)
 
 
+from application.services.auth_service import AuthService
+
 async def get_optional_user_id(
     auth: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> uuid.UUID | None:
     """
     Получение UUID пользователя из JWT токена, если токен передан.
+    Проверяет валидность токена и его тип (строго access, предотвращая Token Type Confusion).
     Если токен отсутствует — возвращает None (для анонимных пользователей).
     """
     if not auth:
         return None
     try:
-        payload = jwt.decode(
-            auth.credentials,
-            settings.jwt_secret_key,
-            algorithms=[settings.jwt_algorithm],
-        )
-        sub = payload.get("sub")
-        return uuid.UUID(sub) if sub else None
+        service = AuthService()
+        payload = service.decode_access_token(auth.credentials)
+        return payload.sub
     except Exception:
         return None
 

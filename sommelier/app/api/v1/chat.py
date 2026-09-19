@@ -15,12 +15,31 @@ async def chat(request: SommelierChatRequestDTO):
     rag_service = SommelierRAGService()
     llm_client = SommelierLLMClient()
 
+    # Извлечение последнего сообщения пользователя для подбора релевантных вин
+    last_user_msg = next((m.content for m in reversed(request.messages) if m.role == "user"), "")
+    recommended_slugs: list[str] = []
+
+    try:
+        from application.adapters.database.db_session import create_session
+        from application.services.catalog_service import CatalogService
+        async with create_session() as session:
+            cat_service = CatalogService(session)
+            if last_user_msg:
+                found = await cat_service.list_wines(query=last_user_msg, limit=3)
+                if found.items:
+                    recommended_slugs = [w.slug for w in found.items]
+            if not recommended_slugs:
+                popular = await cat_service.search_by_taste_matrix(limit=3)
+                recommended_slugs = [w.slug for w in popular]
+    except Exception:
+        pass
+
     system_prompt = rag_service.build_system_prompt()
     messages = [{"role": m.role, "content": m.content} for m in request.messages]
 
     reply = await llm_client.generate_response(system_prompt, messages)
     return SommelierChatResponseDTO(
         reply=reply,
-        recommended_slugs=[],
+        recommended_slugs=recommended_slugs,
         food_pairings=[],
     )

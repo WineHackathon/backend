@@ -6,8 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.adapters.database.models.user import User
 from application.adapters.database.repositories.user_repo import UserRepository
+from application.adapters.database.repositories.scan_repo import ScanRepository
+from application.adapters.database.repositories.preference_repo import PreferenceRepository
 from application.adapters.database.transaction_manager import TransactionManager
-from application.dto.user import UserDTO, UserCreateDTO
+from application.dto.user import UserDTO, UserCreateDTO, UserPreferenceHistoryDTO
+from application.dto.scan import ScanHistoryItemDTO
 from application.exceptions.domain_exceptions import UserNotFound, UserAlreadyExists
 
 
@@ -28,8 +31,8 @@ class UserService:
             first_name=user.first_name,
             last_name=user.last_name,
             avatar_url=user.avatar_url,
-            is_active=user.is_active,
-            is_admin=user.is_admin,
+            is_active=bool(user.is_active) if user.is_active is not None else True,
+            is_admin=bool(user.is_admin) if user.is_admin is not None else False,
             taste_profile=user.taste_profile or {},
         )
 
@@ -76,3 +79,35 @@ class UserService:
             await self.repo.save(user)
 
         return self.to_dto(user)
+
+    async def get_user_scans(self, user_id: uuid.UUID, limit: int = 20) -> list[ScanHistoryItemDTO]:
+        """Получение истории сканирований пользователя."""
+        repo = ScanRepository(self.session)
+        scans = await repo.get_user_scans(user_id, limit=limit)
+        return [
+            ScanHistoryItemDTO(
+                id=s.id,
+                image_id=s.image_id,
+                predicted_slug=s.predicted_slug,
+                confidence=s.confidence,
+                latency_ms=s.latency_ms,
+                status=s.status,
+                created_at=s.created_at,
+            )
+            for s in scans
+        ]
+
+    async def get_user_preferences(self, user_id: uuid.UUID, limit: int = 10) -> list[UserPreferenceHistoryDTO]:
+        """Получение истории предпочтений пользователя в диалогах с сомелье."""
+        repo = PreferenceRepository(self.session)
+        items = await repo.get_by_user_id(user_id, limit=limit)
+        return [
+            UserPreferenceHistoryDTO(
+                id=item.id,
+                session_id=item.session_id,
+                raw_answers=item.raw_answers,
+                recommended_slugs=item.recommended_slugs,
+                created_at=item.created_at,
+            )
+            for item in items
+        ]

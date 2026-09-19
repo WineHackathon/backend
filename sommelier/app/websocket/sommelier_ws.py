@@ -6,6 +6,7 @@ WebSocket обработчик (/ws/sommelier) для интерактивног
 3. 5-вопросный интерактивный онбординг.
 """
 import logging
+from contextlib import asynccontextmanager
 from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -19,16 +20,21 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Sommelier WebSocket"])
 
 
+@asynccontextmanager
 async def _get_catalog_service():
-    """Безопасное получение сервиса каталога с сессией БД."""
+    """Безопасное получение сервиса каталога с сессией БД в контекстном менеджере."""
+    session = None
     try:
         from application.adapters.database.db_session import create_session
         from application.services.catalog_service import CatalogService
         session = create_session()
-        return CatalogService(session), session
+        yield CatalogService(session)
     except Exception as e:
         logger.warning(f"Не удалось инициализировать CatalogService в WebSocket: {e}")
-        return None, None
+        yield None
+    finally:
+        if session:
+            await session.close()
 
 
 @router.websocket("/ws/sommelier")
@@ -82,43 +88,39 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                 # Поиск кандидатов в каталоге
                 candidates: list[Any] = []
                 context_wine_dict = None
-                catalog_service, session = await _get_catalog_service()
+                async with _get_catalog_service() as catalog_service:
+                    if catalog_service:
+                        try:
+                            # 1. Если задан конкретный контекст вина
+                            if context_wine_slug:
+                                try:
+                                    detail = await catalog_service.get_by_slug(context_wine_slug)
+                                    context_wine_dict = detail.model_dump()
+                                    # Ищем похожие вина по вкусовой матрице
+                                    candidates = await catalog_service.find_similar_wines(context_wine_slug, limit=3)
+                                except Exception:
+                                    pass
 
-                if catalog_service:
-                    try:
-                        # 1. Если задан конкретный контекст вина
-                        if context_wine_slug:
-                            try:
-                                detail = await catalog_service.get_by_slug(context_wine_slug)
-                                context_wine_dict = detail.model_dump()
-                                # Ищем похожие вина по вкусовой матрице
-                                candidates = await catalog_service.find_similar_wines(context_wine_slug, limit=3)
-                            except Exception:
-                                pass
+                            # 2. Если пользователь просит найти похожее вино
+                            elif any(k in user_text.lower() for k in ("похож", "аналог", "замен")):
+                                clean_q = user_text.lower().replace("найди", "").replace("похожее", "").replace("на", "").replace("вино", "").strip()
+                                if clean_q:
+                                    found = await catalog_service.list_wines(query=clean_q, limit=1)
+                                    if found.items:
+                                        base_slug = found.items[0].slug
+                                        candidates = await catalog_service.find_similar_wines(base_slug, limit=3)
 
-                        # 2. Если пользователь просит найти похожее вино
-                        elif any(k in user_text.lower() for k in ("похож", "аналог", "замен")):
-                            clean_q = user_text.lower().replace("найди", "").replace("похожее", "").replace("на", "").replace("вино", "").strip()
-                            if clean_q:
-                                found = await catalog_service.list_wines(query=clean_q, limit=1)
-                                if found["items"]:
-                                    base_slug = found["items"][0].slug
-                                    candidates = await catalog_service.find_similar_wines(base_slug, limit=3)
+                            # 3. Общий поиск по запросу пользователя (сорт, категория, гастропара)
+                            if not candidates:
+                                found = await catalog_service.list_wines(query=user_text, limit=3)
+                                candidates = found.items
 
-                        # 3. Общий поиск по запросу пользователя (сорт, категория, гастропара)
-                        if not candidates:
-                            found = await catalog_service.list_wines(query=user_text, limit=3)
-                            candidates = found["items"]
+                            # 4. Если ничего не найдено по строгому поиску, подбираем популярные образцы
+                            if not candidates:
+                                candidates = await catalog_service.search_by_taste_matrix(limit=3)
 
-                        # 4. Если ничего не найдено по строгому поиску, подбираем популярные образцы
-                        if not candidates:
-                            candidates = await catalog_service.search_by_taste_matrix(limit=3)
-
-                    except Exception as exc:
-                        logger.warning(f"Ошибка поиска вин в каталоге для копайлота: {exc}")
-                    finally:
-                        if session:
-                            await session.close()
+                        except Exception as exc:
+                            logger.warning(f"Ошибка поиска вин в каталоге для копайлота: {exc}")
 
                 # Формируем системный контекст для LLM (RAG)
                 system_prompt = rag_service.build_system_prompt(context_wine=context_wine_dict)
@@ -133,7 +135,7 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                     )
 
                 candidates_data = [
-                    c.model_dump() if hasattr(c, "model_dump") else c
+                    c.model_dump(mode="json") if hasattr(c, "model_dump") else c
                     for c in candidates
                 ]
 
@@ -184,21 +186,18 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                 else:
                     # Подбор вин по результатам онбординга
                     final_candidates = []
-                    catalog_service, session = await _get_catalog_service()
-                    if catalog_service:
-                        try:
-                            final_candidates = await catalog_service.search_by_taste_matrix(
-                                category=answers.get("category"),
-                                target_sweetness=1.2 if "сух" in answers.get("sweetness", "").lower() else 3.0,
-                                target_body=4.5 if "плотн" in answers.get("body", "").lower() or "дуб" in answers.get("body_oak", "").lower() else 2.5,
-                                target_acidity=4.0 if "свежест" in answers.get("acidity", "").lower() else 2.5,
-                                limit=4,
-                            )
-                        except Exception as e:
-                            logger.warning(f"Ошибка подбора вин по вкусовой матрице в онбординге: {e}")
-                        finally:
-                            if session:
-                                await session.close()
+                    async with _get_catalog_service() as catalog_service:
+                        if catalog_service:
+                            try:
+                                final_candidates = await catalog_service.search_by_taste_matrix(
+                                    category=answers.get("category"),
+                                    target_sweetness=1.2 if "сух" in answers.get("sweetness", "").lower() else 3.0,
+                                    target_body=4.5 if "плотн" in answers.get("body", "").lower() or "дуб" in answers.get("body_oak", "").lower() else 2.5,
+                                    target_acidity=4.0 if "свежест" in answers.get("acidity", "").lower() else 2.5,
+                                    limit=4,
+                                )
+                            except Exception as e:
+                                logger.warning(f"Ошибка подбора вин по вкусовой матрице в онбординге: {e}")
 
                     if not final_candidates:
                         mock_candidates = [
@@ -231,7 +230,7 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                         final_candidates = ranked
 
                     candidates_data = [
-                        c.model_dump() if hasattr(c, "model_dump") else c
+                        c.model_dump(mode="json") if hasattr(c, "model_dump") else c
                         for c in final_candidates
                     ]
 

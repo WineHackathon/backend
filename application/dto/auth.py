@@ -1,7 +1,22 @@
 """
 DTO схемы для аутентификации и авторизации.
 """
+import uuid
+from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field
+
+
+class TokenPayloadDTO(BaseModel):
+    """Строго типизированный payload JWT токена."""
+    sub: uuid.UUID
+    exp: datetime
+    type: str  # "access" | "refresh"
+    is_admin: bool = False
+
+
+class RefreshTokenRequestDTO(BaseModel):
+    """Запрос на обновление пары токенов по refresh токену."""
+    refresh_token: str
 
 
 class LoginRequestDTO(BaseModel):

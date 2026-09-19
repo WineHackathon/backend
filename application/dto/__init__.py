@@ -17,8 +17,16 @@ from .user import (
     UserCreateDTO,
     PreferenceSessionCreateDTO,
 )
-from .auth import LoginRequestDTO, RegisterRequestDTO, TokenPairDTO, YandexAuthDTO, AuthResponseDTO
-from .cellar import CellarItemDTO, CellarItemCreateDTO
+from .auth import (
+    LoginRequestDTO,
+    RegisterRequestDTO,
+    TokenPairDTO,
+    TokenPayloadDTO,
+    RefreshTokenRequestDTO,
+    YandexAuthDTO,
+    AuthResponseDTO,
+)
+from .cellar import CellarItemDTO, CellarItemCreateDTO, CellarDeleteResponseDTO
 from .scan import EvaluationResponseDTO, ScanResultDTO, ScanHistoryItemDTO
 from .sommelier import (
     OnboardingQuestionDTO,
@@ -45,10 +53,13 @@ __all__ = [
     "LoginRequestDTO",
     "RegisterRequestDTO",
     "TokenPairDTO",
+    "TokenPayloadDTO",
+    "RefreshTokenRequestDTO",
     "YandexAuthDTO",
     "AuthResponseDTO",
     "CellarItemDTO",
     "CellarItemCreateDTO",
+    "CellarDeleteResponseDTO",
     "EvaluationResponseDTO",
     "ScanResultDTO",
     "ScanHistoryItemDTO",

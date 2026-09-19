@@ -30,3 +30,10 @@ class CellarItemDTO(BaseModel):
     wine: WineDTO | None = None
 
     model_config = {"from_attributes": True}
+
+
+class CellarDeleteResponseDTO(BaseModel):
+    """Ответ при успешном удалении позиции из погреба."""
+    status: str = "deleted"
+    item_id: uuid.UUID
+

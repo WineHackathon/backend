@@ -10,7 +10,7 @@ from application.adapters.database.models.cellar import CellarStatus
 from application.adapters.database.repositories.scan_repo import ScanRepository
 from application.adapters.database.repositories.preference_repo import PreferenceRepository
 from application.dto.user import UserDTO, UserPreferenceHistoryDTO
-from application.dto.cellar import CellarItemDTO, CellarItemCreateDTO
+from application.dto.cellar import CellarItemDTO, CellarItemCreateDTO, CellarDeleteResponseDTO
 from application.dto.scan import ScanHistoryItemDTO
 from application.services.user_service import UserService
 from application.services.cellar_service import CellarService
@@ -52,7 +52,7 @@ async def add_to_my_cellar(
     return await service.add_item(user_id, dto)
 
 
-@router.delete("/cellar/{item_id}", summary="Remove wine from cellar")
+@router.delete("/cellar/{item_id}", response_model=CellarDeleteResponseDTO, summary="Remove wine from cellar")
 async def remove_from_my_cellar(
     item_id: uuid.UUID,
     user_id: uuid.UUID = Depends(get_current_user_id),
@@ -61,7 +61,7 @@ async def remove_from_my_cellar(
     """Удаление позиции из личного погреба."""
     service = CellarService(session)
     await service.remove_item(user_id, item_id)
-    return {"status": "deleted", "item_id": str(item_id)}
+    return CellarDeleteResponseDTO(status="deleted", item_id=item_id)
 
 
 @router.get("/scans", response_model=list[ScanHistoryItemDTO], summary="Get user scan history")
@@ -71,20 +71,8 @@ async def get_my_scans(
     session: AsyncSession = Depends(get_session),
 ):
     """История сканирований текущего пользователя."""
-    repo = ScanRepository(session)
-    scans = await repo.get_user_scans(user_id, limit=limit)
-    return [
-        ScanHistoryItemDTO(
-            id=s.id,
-            image_id=s.image_id,
-            predicted_slug=s.predicted_slug,
-            confidence=s.confidence,
-            latency_ms=s.latency_ms,
-            status=s.status,
-            created_at=s.created_at,
-        )
-        for s in scans
-    ]
+    service = UserService(session)
+    return await service.get_user_scans(user_id, limit=limit)
 
 
 @router.get("/preferences", response_model=list[UserPreferenceHistoryDTO], summary="Get user sommelier preference history")
@@ -94,15 +82,5 @@ async def get_my_preferences(
     session: AsyncSession = Depends(get_session),
 ):
     """История сырых предпочтений и рекомендаций диалогов с сомелье (сырые данные)."""
-    repo = PreferenceRepository(session)
-    items = await repo.get_by_user_id(user_id, limit=limit)
-    return [
-        UserPreferenceHistoryDTO(
-            id=item.id,
-            session_id=item.session_id,
-            raw_answers=item.raw_answers,
-            recommended_slugs=item.recommended_slugs,
-            created_at=item.created_at,
-        )
-        for item in items
-    ]
+    service = UserService(session)
+    return await service.get_user_preferences(user_id, limit=limit)
