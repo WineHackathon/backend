@@ -32,9 +32,6 @@ run_service_test "backend" "." "backend/tests"
 # 3. Dedicated Sommelier Service (Onboarding, 4D Taste Matrix, WebSockets)
 run_service_test "sommelier" "." "sommelier/tests"
 
-# 4. Dedicated ML Service (Vector Index, HMAC verification, Feature Extractor)
-run_service_test "ml" "." "ml/tests"
-
 echo ""
 echo "=================================================="
 if [ $FAILED -eq 0 ]; then

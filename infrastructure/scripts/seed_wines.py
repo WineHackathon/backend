@@ -155,7 +155,7 @@ async def seed_data(csv_path: str) -> None:
 
 def main():
     parser = argparse.ArgumentParser(description="Импорт вин и разметка вкусовой матрицы")
-    parser.add_argument("--csv-path", default="Датасет/strapi_output0709.csv", help="Путь к CSV файлу")
+    parser.add_argument("--csv-path", default="infrastructure/data/catalog.csv", help="Путь к CSV файлу")
     args = parser.parse_args()
 
     asyncio.run(seed_data(args.csv_path))
