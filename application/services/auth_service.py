@@ -26,15 +26,14 @@ from application.services.user_service import UserService
 
 def hash_password(password: str) -> str:
     """Хеширование пароля через PBKDF2-HMAC-SHA256 (100,000 итераций) с уникальной криптографической солью."""
-    per_user_salt = secrets.token_hex(16)
-    pepper = settings.password_salt
+    salt = secrets.token_hex(16)
     derived = hashlib.pbkdf2_hmac(
         "sha256",
-        f"{pepper}{password}".encode("utf-8"),
-        per_user_salt.encode("utf-8"),
+        password.encode("utf-8"),
+        salt.encode("utf-8"),
         100_000,
     )
-    return f"pbkdf2_sha256$100000${per_user_salt}${derived.hex()}"
+    return f"pbkdf2_sha256$100000${salt}${derived.hex()}"
 
 
 def verify_password(password: str, hashed: str) -> bool:
@@ -42,7 +41,6 @@ def verify_password(password: str, hashed: str) -> bool:
     if not hashed or not hashed.startswith("pbkdf2_sha256$"):
         return False
     parts = hashed.split("$")
-    pepper = settings.password_salt
 
     # Стандартный модульный формат: pbkdf2_sha256$<iterations>$<salt>$<hash>
     if len(parts) == 4 and parts[0] == "pbkdf2_sha256":
@@ -50,28 +48,27 @@ def verify_password(password: str, hashed: str) -> bool:
             iterations = int(parts[1])
         except ValueError:
             return False
-        per_user_salt = parts[2]
+        salt = parts[2]
         expected_hash = parts[3]
         derived = hashlib.pbkdf2_hmac(
             "sha256",
-            f"{pepper}{password}".encode("utf-8"),
-            per_user_salt.encode("utf-8"),
+            password.encode("utf-8"),
+            salt.encode("utf-8"),
             iterations,
         ).hex()
         return hmac.compare_digest(derived, expected_hash)
 
-    # Устаревший формат: pbkdf2_sha256$<hash> (глобальная соль/пеппер)
+    # Устаревший 2-элементный формат: pbkdf2_sha256$<hash> (обратная совместимость)
     elif len(parts) == 2 and parts[0] == "pbkdf2_sha256":
         expected = parts[1]
+        legacy_salt = getattr(settings, "password_salt", "wine_salt_hackathon_2026")
         derived_legacy = hashlib.pbkdf2_hmac(
-            "sha256", password.encode("utf-8"), pepper.encode("utf-8"), 100_000
+            "sha256",
+            password.encode("utf-8"),
+            legacy_salt.encode("utf-8"),
+            100_000,
         ).hex()
-        if hmac.compare_digest(derived_legacy, expected):
-            return True
-        derived_peppered = hashlib.pbkdf2_hmac(
-            "sha256", f"{pepper}{password}".encode("utf-8"), pepper.encode("utf-8"), 100_000
-        ).hex()
-        return hmac.compare_digest(derived_peppered, expected)
+        return hmac.compare_digest(derived_legacy, expected)
 
     return False
 
