@@ -1,39 +1,64 @@
 """
-WebSocket обработчик (/ws/sommelier) для интерактивного стриминга диалога с сомелье в реальном времени.
+WebSocket обработчик (/ws/sommelier) для интерактивного диалога с AI-Сомелье (Copilot) в реальном времени.
+Поддерживает:
+1. Свободный диалог с AI-копайлотом через OpenRouter (streaming и non-streaming).
+2. Поиск и подбор похожих вин на основе запроса или выбранного вина (context_wine_slug).
+3. 5-вопросный интерактивный онбординг.
 """
 import logging
+from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from sommelier.app.services.onboarding_service import SommelierOnboardingService
 from sommelier.app.services.recommendation_engine import SommelierRecommendationEngine
+from sommelier.app.services.llm_client import SommelierLLMClient
+from sommelier.app.services.rag_service import SommelierRAGService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Sommelier WebSocket"])
 
 
+async def _get_catalog_service():
+    """Безопасное получение сервиса каталога с сессией БД."""
+    try:
+        from application.adapters.database.db_session import create_session
+        from application.services.catalog_service import CatalogService
+        session = create_session()
+        return CatalogService(session), session
+    except Exception as e:
+        logger.warning(f"Не удалось инициализировать CatalogService в WebSocket: {e}")
+        return None, None
+
+
 @router.websocket("/ws/sommelier")
 async def sommelier_websocket_endpoint(websocket: WebSocket):
     """
-    Интерактивный WebSocket протокол диалога:
-    1. При подключении отправляет приветствие и 1-й вопрос онбординга.
-    2. Принимает ответы от клиента: {"type": "answer", "step": 1, "code": "category", "answer": "Красное"}.
-    3. Отправляет адаптивный следующий вопрос.
-    4. На 5 шаге: выдает подобранные карточки вин или предложение зарегистрироваться для гостей.
+    Интерактивный WebSocket протокол AI-Сомелье (Copilot):
+    - type: "message" / "chat": свободный диалог с AI-копайлотом через OpenRouter + подбор вин.
+    - type: "answer": 5-шаговый адаптивный опрос предпочтений.
+    - type: "ping": проверка соединения.
     """
     await websocket.accept()
     onboarding_service = SommelierOnboardingService()
     recommendation_engine = SommelierRecommendationEngine()
+    llm_client = SommelierLLMClient()
+    rag_service = SommelierRAGService()
 
     answers: dict[str, str] = {}
     current_step = 1
+    chat_history: list[dict[str, str]] = []
 
     try:
-        # Отправляем приветствие и вопрос №1
+        # Отправляем приветствие с описанием возможностей копайлота и 1-м вопросом онбординга
         first_q = onboarding_service.get_question(step=1)
         await websocket.send_json({
             "type": "welcome",
-            "message": "Приветствую! Я ваш цифровой AI-сомелье. Давайте подберем идеальное вино по вашему вкусу!",
+            "message": (
+                "Приветствую! Я ваш цифровой AI-сомелье и персональный винный копайлот. "
+                "Вы можете задавать мне любые вопросы о вине, регионах и гастропарах, "
+                "попросить найти похожие вина или пройти быстрый подбор из 5 вопросов!"
+            ),
             "question": first_q.model_dump(),
         })
 
@@ -41,7 +66,106 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_json()
             msg_type = data.get("type")
 
-            if msg_type == "answer":
+            # -----------------------------------------------------------------
+            # 1. Свободный диалог с AI-Копайлотом (type: "message" или "chat")
+            # -----------------------------------------------------------------
+            if msg_type in ("message", "chat"):
+                user_text = (data.get("content") or data.get("message") or "").strip()
+                if not user_text:
+                    continue
+
+                stream_enabled = bool(data.get("stream", False))
+                context_wine_slug = data.get("context_wine_slug")
+
+                chat_history.append({"role": "user", "content": user_text})
+
+                # Поиск кандидатов в каталоге
+                candidates: list[Any] = []
+                context_wine_dict = None
+                catalog_service, session = await _get_catalog_service()
+
+                if catalog_service:
+                    try:
+                        # 1. Если задан конкретный контекст вина
+                        if context_wine_slug:
+                            try:
+                                detail = await catalog_service.get_by_slug(context_wine_slug)
+                                context_wine_dict = detail.model_dump()
+                                # Ищем похожие вина по вкусовой матрице
+                                candidates = await catalog_service.find_similar_wines(context_wine_slug, limit=3)
+                            except Exception:
+                                pass
+
+                        # 2. Если пользователь просит найти похожее вино
+                        elif any(k in user_text.lower() for k in ("похож", "аналог", "замен")):
+                            clean_q = user_text.lower().replace("найди", "").replace("похожее", "").replace("на", "").replace("вино", "").strip()
+                            if clean_q:
+                                found = await catalog_service.list_wines(query=clean_q, limit=1)
+                                if found["items"]:
+                                    base_slug = found["items"][0].slug
+                                    candidates = await catalog_service.find_similar_wines(base_slug, limit=3)
+
+                        # 3. Общий поиск по запросу пользователя (сорт, категория, гастропара)
+                        if not candidates:
+                            found = await catalog_service.list_wines(query=user_text, limit=3)
+                            candidates = found["items"]
+
+                        # 4. Если ничего не найдено по строгому поиску, подбираем популярные образцы
+                        if not candidates:
+                            candidates = await catalog_service.search_by_taste_matrix(limit=3)
+
+                    except Exception as exc:
+                        logger.warning(f"Ошибка поиска вин в каталоге для копайлота: {exc}")
+                    finally:
+                        if session:
+                            await session.close()
+
+                # Формируем системный контекст для LLM (RAG)
+                system_prompt = rag_service.build_system_prompt(context_wine=context_wine_dict)
+                if candidates:
+                    candidates_summary = "\n".join([
+                        f"- {c.name} ({c.category}, {c.sugar_type or ''}, регион {c.region or 'Россия'}, цена ~{c.price_rub or 'Н/Д'} руб.)"
+                        for c in candidates
+                    ])
+                    system_prompt += (
+                        f"\n\nПодобранные актуальные российские вина из каталога для рекомендации:\n{candidates_summary}\n"
+                        "Кратко упомяните эти вина в ответе, объяснив пользователю, чем они хороши и почему подходят."
+                    )
+
+                candidates_data = [
+                    c.model_dump() if hasattr(c, "model_dump") else c
+                    for c in candidates
+                ]
+
+                # Генерация ответа: потоковая или единая
+                if stream_enabled:
+                    full_reply = []
+                    async for chunk in llm_client.stream_response(system_prompt, chat_history):
+                        full_reply.append(chunk)
+                        await websocket.send_json({
+                            "type": "stream_chunk",
+                            "content": chunk,
+                        })
+                    complete_text = "".join(full_reply)
+                    chat_history.append({"role": "assistant", "content": complete_text})
+                    await websocket.send_json({
+                        "type": "stream_end",
+                        "candidates": candidates_data,
+                    })
+                else:
+                    reply = await llm_client.generate_response(system_prompt, chat_history)
+                    chat_history.append({"role": "assistant", "content": reply})
+                    await websocket.send_json({
+                        "type": "message",
+                        "role": "assistant",
+                        "content": reply,
+                        "candidates": candidates_data,
+                    })
+
+            # -----------------------------------------------------------------
+            # 2. Интерактивный 5-вопросный онбординг (type: "answer")
+            # -----------------------------------------------------------------
+            elif msg_type == "answer":
                 step = data.get("step", current_step)
                 code = data.get("code")
                 answer_val = data.get("answer")
@@ -51,7 +175,6 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
 
                 if step < 5:
                     current_step = step + 1
-                    # Адаптивный выбор следующего вопроса
                     next_q = onboarding_service.get_adaptive_question(step=current_step, answers=answers)
                     await websocket.send_json({
                         "type": "next_question",
@@ -59,43 +182,69 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                         "question": next_q.model_dump(),
                     })
                 else:
-                    # Опрос завершен: генерируем результат
-                    mock_candidates = [
-                        {
-                            "slug": "fanagoria-cru-2020",
-                            "name": "Фанагория Крю Лермонт Каберне Совиньон",
-                            "category": answers.get("category", "Красное"),
-                            "sweetness": 1.2,
-                            "body": 4.5,
-                            "acidity": 3.0,
-                            "oak": 4.0,
-                            "aroma_tags": ["вишня", "дуб", "черная смородина"],
-                        },
-                        {
-                            "slug": "usadba-divnomorskoe-2021",
-                            "name": "Усадьба Дивноморское Восточный Склон",
-                            "category": answers.get("category", "Белое"),
-                            "sweetness": 1.1,
-                            "body": 2.5,
-                            "acidity": 4.2,
-                            "oak": 1.5,
-                            "aroma_tags": ["цитрус", "белые цветы", "минералы"],
-                        },
-                    ]
+                    # Подбор вин по результатам онбординга
+                    final_candidates = []
+                    catalog_service, session = await _get_catalog_service()
+                    if catalog_service:
+                        try:
+                            final_candidates = await catalog_service.search_by_taste_matrix(
+                                category=answers.get("category"),
+                                target_sweetness=1.2 if "сух" in answers.get("sweetness", "").lower() else 3.0,
+                                target_body=4.5 if "плотн" in answers.get("body", "").lower() or "дуб" in answers.get("body_oak", "").lower() else 2.5,
+                                target_acidity=4.0 if "свежест" in answers.get("acidity", "").lower() else 2.5,
+                                limit=4,
+                            )
+                        except Exception as e:
+                            logger.warning(f"Ошибка подбора вин по вкусовой матрице в онбординге: {e}")
+                        finally:
+                            if session:
+                                await session.close()
 
-                    ranked = recommendation_engine.rank_candidates(
-                        candidates=mock_candidates,
-                        target_sweetness=1.2 if "сух" in answers.get("sweetness", "").lower() else 3.0,
-                        target_body=4.5 if "плотн" in answers.get("body", "").lower() or "дуб" in answers.get("body_oak", "").lower() else 2.5,
-                    )
+                    if not final_candidates:
+                        mock_candidates = [
+                            {
+                                "slug": "fanagoria-cru-2020",
+                                "name": "Фанагория Крю Лермонт Каберне Совиньон",
+                                "category": answers.get("category", "Красное"),
+                                "sweetness": 1.2,
+                                "body": 4.5,
+                                "acidity": 3.0,
+                                "oak": 4.0,
+                                "aroma_tags": ["вишня", "дуб", "черная смородина"],
+                            },
+                            {
+                                "slug": "usadba-divnomorskoe-2021",
+                                "name": "Усадьба Дивноморское Восточный Склон",
+                                "category": answers.get("category", "Белое"),
+                                "sweetness": 1.1,
+                                "body": 2.5,
+                                "acidity": 4.2,
+                                "oak": 1.5,
+                                "aroma_tags": ["цитрус", "белые цветы", "минералы"],
+                            },
+                        ]
+                        ranked = recommendation_engine.rank_candidates(
+                            candidates=mock_candidates,
+                            target_sweetness=1.2 if "сух" in answers.get("sweetness", "").lower() else 3.0,
+                            target_body=4.5 if "плотн" in answers.get("body", "").lower() or "дуб" in answers.get("body_oak", "").lower() else 2.5,
+                        )
+                        final_candidates = ranked
+
+                    candidates_data = [
+                        c.model_dump() if hasattr(c, "model_dump") else c
+                        for c in final_candidates
+                    ]
 
                     await websocket.send_json({
                         "type": "completed",
-                        "message": "Превосходно! Ваш вкусовой профиль сформирован. Вот лучшие кандидаты:",
-                        "candidates": ranked,
+                        "message": "Превосходно! Ваш вкусовой профиль сформирован. Вот лучшие кандидаты по вашему вкусу:",
+                        "candidates": candidates_data,
                         "registration_prompt": "Зарегистрируйтесь, чтобы сохранить эти вина в личный погреб и отслеживать историю дегустаций!",
                     })
 
+            # -----------------------------------------------------------------
+            # 3. Healthcheck ping-pong
+            # -----------------------------------------------------------------
             elif msg_type == "ping":
                 await websocket.send_json({"type": "pong"})
 
@@ -107,3 +256,4 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
             await websocket.close()
         except Exception:
             pass
+

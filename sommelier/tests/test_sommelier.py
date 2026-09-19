@@ -85,3 +85,50 @@ def test_sommelier_websocket_connection():
         next_step = websocket.receive_json()
         assert next_step["type"] == "next_question"
         assert next_step["step"] == 2
+
+
+def test_sommelier_websocket_copilot_chat():
+    """Проверка свободного диалога с AI-копайлотом через WebSocket."""
+    client = TestClient(app)
+    with client.websocket_connect("/ws/sommelier") as websocket:
+        welcome = websocket.receive_json()
+        assert welcome["type"] == "welcome"
+
+        # Отправляем свободный запрос копайлоту
+        websocket.send_json({
+            "type": "message",
+            "content": "Посоветуй легкое белое вино к морепродуктам",
+            "stream": False,
+        })
+        resp = websocket.receive_json()
+        assert resp["type"] == "message"
+        assert resp["role"] == "assistant"
+        assert len(resp["content"]) > 0
+        assert "candidates" in resp
+
+
+def test_sommelier_websocket_streaming():
+    """Проверка потокового (streaming) диалога с AI-копайлотом через WebSocket."""
+    client = TestClient(app)
+    with client.websocket_connect("/ws/sommelier") as websocket:
+        welcome = websocket.receive_json()
+        assert welcome["type"] == "welcome"
+
+        websocket.send_json({
+            "type": "message",
+            "content": "Что такое оранжевое вино?",
+            "stream": True,
+        })
+
+        # Получаем стриминговые чанки
+        chunks = []
+        while True:
+            msg = websocket.receive_json()
+            if msg["type"] == "stream_chunk":
+                chunks.append(msg["content"])
+            elif msg["type"] == "stream_end":
+                assert "candidates" in msg
+                break
+
+        assert len(chunks) > 0
+

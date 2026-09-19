@@ -132,3 +132,19 @@ class CatalogService:
             limit=limit,
         )
         return [self.to_dto(w) for w in wines]
+
+    async def find_similar_wines(self, slug: str, limit: int = 4) -> list[WineDTO]:
+        """Поиск похожих вин по вкусовой матрице (сладость, плотность, кислотность, дуб)."""
+        base_wine = await self.repo.get_by_slug(slug)
+        if not base_wine:
+            return []
+        wines = await self.repo.find_by_taste_matrix(
+            category=base_wine.category,
+            target_sweetness=base_wine.sweetness or 1.2,
+            target_body=base_wine.body or 3.0,
+            target_acidity=base_wine.acidity or 3.0,
+            target_oak=base_wine.oak or 2.0,
+            limit=limit + 2,
+        )
+        return [self.to_dto(w) for w in wines if w.slug != slug][:limit]
+
