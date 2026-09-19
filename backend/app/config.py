@@ -18,9 +18,10 @@ class Settings(BaseSettings):
         "http://localhost:5173",
     ]
 
-    # JWT
+    # Auth & JWT
     jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", "wine_hackathon_super_secret_jwt_key_32_chars")
     jwt_algorithm: str = "HS256"
+    password_salt: str = os.getenv("PASSWORD_SALT", "wine_salt_hackathon_2026")
 
     # Redis
     redis_host: str = os.getenv("REDIS_HOST", "localhost")

@@ -1,13 +1,13 @@
 """
 Прикладной сервис аутентификации и генерации JWT токенов.
 """
-import os
 import uuid
 from datetime import datetime, timedelta, timezone
 import hashlib
 import jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.config import settings
 from application.adapters.database.repositories.user_repo import UserRepository
 from application.adapters.database.transaction_manager import TransactionManager
 from application.dto.auth import LoginRequestDTO, RegisterRequestDTO, TokenPairDTO
@@ -16,26 +16,33 @@ from application.exceptions.domain_exceptions import AuthenticationError, UserAl
 from application.services.user_service import UserService
 
 
-def hash_password(password: str) -> str:
-    """Хеширование пароля через SHA-256 с солью (в production: argon2id/bcrypt)."""
-    salt = os.getenv("PASSWORD_SALT", "wine_salt_hackathon_2026")
-    return hashlib.sha256(f"{salt}{password}".encode("utf-8")).hexdigest()
+def hash_password(password: str, salt: str | None = None) -> str:
+    """Хеширование пароля через SHA-256 с солью из конфигурации."""
+    used_salt = salt or settings.password_salt
+    return hashlib.sha256(f"{used_salt}{password}".encode("utf-8")).hexdigest()
 
 
-def verify_password(password: str, hashed: str) -> bool:
+def verify_password(password: str, hashed: str, salt: str | None = None) -> bool:
     """Проверка соответствия пароля хешу."""
-    return hash_password(password) == hashed
+    return hash_password(password, salt=salt) == hashed
 
 
 class AuthService:
     """Сервис аутентификации пользователей."""
 
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        jwt_secret: str | None = None,
+        jwt_algorithm: str | None = None,
+        password_salt: str | None = None,
+    ) -> None:
         self.session = session
         self.user_repo = UserRepository(session)
         self.tm = TransactionManager(session)
-        self.jwt_secret = os.getenv("JWT_SECRET_KEY", "wine_hackathon_super_secret_jwt_key_32_chars")
-        self.jwt_algorithm = "HS256"
+        self.jwt_secret = jwt_secret or settings.jwt_secret_key
+        self.jwt_algorithm = jwt_algorithm or settings.jwt_algorithm
+        self.password_salt = password_salt or settings.password_salt
 
     def create_token_pair(self, user_id: uuid.UUID, is_admin: bool = False) -> TokenPairDTO:
         """Создание пары токенов (access и refresh)."""
@@ -81,7 +88,7 @@ class AuthService:
         user_service = UserService(self.session)
         user_dto = await user_service.create_user(
             email=dto.email,
-            password_hash=hash_password(dto.password),
+            password_hash=hash_password(dto.password, salt=self.password_salt),
             first_name=dto.first_name,
             last_name=dto.last_name,
         )
@@ -91,7 +98,7 @@ class AuthService:
     async def login(self, dto: LoginRequestDTO) -> tuple[UserDTO, TokenPairDTO]:
         """Вход пользователя по email и паролю."""
         user = await self.user_repo.get_by_email(dto.email)
-        if not user or not user.password_hash or not verify_password(dto.password, user.password_hash):
+        if not user or not user.password_hash or not verify_password(dto.password, user.password_hash, salt=self.password_salt):
             raise AuthenticationError("Неверный email или пароль.")
 
         user_dto = UserService.to_dto(user)
