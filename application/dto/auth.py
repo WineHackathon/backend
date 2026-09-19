@@ -29,3 +29,13 @@ class TokenPairDTO(BaseModel):
 class YandexAuthDTO(BaseModel):
     """Запрос авторизации через OAuth Яндекс ID."""
     code: str = Field(description="Authorization code от Яндекса")
+
+
+class AuthResponseDTO(BaseModel):
+    """Ответ аутентификации с данными пользователя и токенами."""
+    user: "UserDTO"
+    tokens: TokenPairDTO
+
+from application.dto.user import UserDTO  # noqa: E402
+AuthResponseDTO.model_rebuild()
+

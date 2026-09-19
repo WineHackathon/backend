@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.adapters.database.db_session import get_session
+from application.adapters.database.models.cellar import CellarStatus
 from application.adapters.database.repositories.scan_repo import ScanRepository
 from application.adapters.database.repositories.preference_repo import PreferenceRepository
 from application.dto.user import UserDTO, UserPreferenceHistoryDTO
@@ -31,7 +32,7 @@ async def get_my_profile(
 
 @router.get("/cellar", response_model=list[CellarItemDTO], summary="List wines in user cellar")
 async def get_my_cellar(
-    status: str | None = Query(None, description="Статус (in_cellar, wishlist, tasted)"),
+    status: CellarStatus | None = Query(None, description="Статус: in_cellar, wishlist, tasted"),
     user_id: uuid.UUID = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_session),
 ):

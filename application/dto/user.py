@@ -40,3 +40,23 @@ class UserPreferenceHistoryDTO(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class UserCreateDTO(BaseModel):
+    """Данные для создания нового пользователя."""
+    email: str
+    password_hash: str | None = None
+    yandex_id: str | None = None
+    first_name: str = "Пользователь"
+    last_name: str | None = None
+    avatar_url: str | None = None
+    taste_profile: dict = Field(default_factory=dict)
+
+
+class PreferenceSessionCreateDTO(BaseModel):
+    """Данные сессии сомелье для сохранения сырых ответов и обновления вкусового профиля."""
+    user_id: uuid.UUID | None = None
+    session_id: str
+    raw_answers: dict[str, str] = Field(default_factory=dict)
+    recommended_slugs: list[str] = Field(default_factory=list)
+

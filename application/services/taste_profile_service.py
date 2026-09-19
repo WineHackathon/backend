@@ -10,6 +10,7 @@ from application.adapters.database.models.preference_history import UserPreferen
 from application.adapters.database.repositories.user_repo import UserRepository
 from application.adapters.database.repositories.preference_repo import PreferenceRepository
 from application.adapters.database.transaction_manager import TransactionManager
+from application.dto.user import TasteProfileDTO, PreferenceSessionCreateDTO
 
 logger = logging.getLogger(__name__)
 
@@ -25,35 +26,39 @@ class TasteProfileService:
 
     async def record_preferences_and_update_profile(
         self,
-        user_id: uuid.UUID | None,
-        session_id: str,
-        raw_answers: dict[str, str],
-        recommended_slugs: list[str],
-    ) -> dict:
+        dto: PreferenceSessionCreateDTO | None = None,
+        **kwargs,
+    ) -> TasteProfileDTO | None:
         """
         Фоновая задача (на фоне на бэке):
         1. Сохранение истории предпочтений (сырые данные) в UserPreferenceHistory.
         2. Агрегация вкусового профиля пользователя (User.taste_profile) через EMA.
         """
+        if dto is None:
+            dto = PreferenceSessionCreateDTO(**kwargs)
+        elif kwargs:
+            dto = dto.model_copy(update=kwargs)
+
         # 1. Сохранение сырой истории
         pref_record = UserPreferenceHistory(
-            user_id=user_id,
-            session_id=session_id,
-            raw_answers=raw_answers,
-            recommended_slugs=recommended_slugs,
+            user_id=dto.user_id,
+            session_id=dto.session_id,
+            raw_answers=dto.raw_answers,
+            recommended_slugs=dto.recommended_slugs,
         )
         async with self.tm:
             await self.pref_repo.save(pref_record)
 
-        if not user_id:
-            return {}
+        if not dto.user_id:
+            return None
 
         # 2. Агрегация профиля авторизованного пользователя
-        user = await self.user_repo.get_by_id(user_id)
+        user = await self.user_repo.get_by_id(dto.user_id)
         if not user:
-            return {}
+            return None
 
         current_profile = user.taste_profile or {}
+        raw_answers = dto.raw_answers
 
         # Маппинг ответов на числовые шкалы
         # 1. Категория
@@ -108,7 +113,8 @@ class TasteProfileService:
         }
 
         async with self.tm:
-            await self.user_repo.update_taste_profile(user_id, updated_profile)
+            await self.user_repo.update_taste_profile(dto.user_id, updated_profile)
 
-        logger.info(f"Вкусовой профиль пользователя {user_id} успешно обновлен: {updated_profile}")
-        return updated_profile
+        logger.info(f"Вкусовой профиль пользователя {dto.user_id} успешно обновлен: {updated_profile}")
+        return TasteProfileDTO(**updated_profile)
+

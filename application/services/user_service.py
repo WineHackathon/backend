@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from application.adapters.database.models.user import User
 from application.adapters.database.repositories.user_repo import UserRepository
 from application.adapters.database.transaction_manager import TransactionManager
-from application.dto.user import UserDTO
+from application.dto.user import UserDTO, UserCreateDTO
 from application.exceptions.domain_exceptions import UserNotFound, UserAlreadyExists
 
 
@@ -49,27 +49,27 @@ class UserService:
 
     async def create_user(
         self,
-        email: str,
-        password_hash: str | None = None,
-        yandex_id: str | None = None,
-        first_name: str = "Пользователь",
-        last_name: str | None = None,
-        avatar_url: str | None = None,
-        taste_profile: dict | None = None,
+        dto: UserCreateDTO | None = None,
+        **kwargs,
     ) -> UserDTO:
-        """Создание нового пользователя."""
-        existing = await self.repo.get_by_email(email)
+        """Создание нового пользователя через UserCreateDTO."""
+        if dto is None:
+            dto = UserCreateDTO(**kwargs)
+        elif kwargs:
+            dto = dto.model_copy(update=kwargs)
+
+        existing = await self.repo.get_by_email(dto.email)
         if existing:
-            raise UserAlreadyExists(email)
+            raise UserAlreadyExists(dto.email)
 
         user = User(
-            email=email.lower().strip(),
-            password_hash=password_hash,
-            yandex_id=yandex_id,
-            first_name=first_name,
-            last_name=last_name,
-            avatar_url=avatar_url,
-            taste_profile=taste_profile or {},
+            email=dto.email.lower().strip(),
+            password_hash=dto.password_hash,
+            yandex_id=dto.yandex_id,
+            first_name=dto.first_name,
+            last_name=dto.last_name,
+            avatar_url=dto.avatar_url,
+            taste_profile=dto.taste_profile or {},
         )
 
         async with self.tm:

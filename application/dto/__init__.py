@@ -10,8 +10,14 @@ from .wine import (
     TasteMatrixSearchDTO,
     PaginatedWinesDTO,
 )
-from .user import UserDTO, TasteProfileDTO, UserPreferenceHistoryDTO
-from .auth import LoginRequestDTO, RegisterRequestDTO, TokenPairDTO, YandexAuthDTO
+from .user import (
+    UserDTO,
+    TasteProfileDTO,
+    UserPreferenceHistoryDTO,
+    UserCreateDTO,
+    PreferenceSessionCreateDTO,
+)
+from .auth import LoginRequestDTO, RegisterRequestDTO, TokenPairDTO, YandexAuthDTO, AuthResponseDTO
 from .cellar import CellarItemDTO, CellarItemCreateDTO
 from .scan import EvaluationResponseDTO, ScanResultDTO, ScanHistoryItemDTO
 from .sommelier import (
@@ -34,10 +40,13 @@ __all__ = [
     "UserDTO",
     "TasteProfileDTO",
     "UserPreferenceHistoryDTO",
+    "UserCreateDTO",
+    "PreferenceSessionCreateDTO",
     "LoginRequestDTO",
     "RegisterRequestDTO",
     "TokenPairDTO",
     "YandexAuthDTO",
+    "AuthResponseDTO",
     "CellarItemDTO",
     "CellarItemCreateDTO",
     "EvaluationResponseDTO",
