@@ -225,3 +225,50 @@ def test_auth_refresh_endpoint_success_and_rejection(client: TestClient):
         assert data["tokens"]["access_token"] != ""
 
 
+def test_wine_not_found_returns_404(client: TestClient):
+    """Проверка возврата HTTP 404 при запросе несуществующего вина (WineNotFound)."""
+    with patch("application.adapters.database.repositories.wine_repo.WineRepository.get_by_slug", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = None
+        resp = client.get("/api/v1/catalog/wines/non-existent-wine-slug-12345")
+        assert resp.status_code == 404
+        data = resp.json()
+        assert "detail" in data
+        assert "не найдено" in data["detail"].lower()
+
+
+def test_user_not_found_returns_404(client: TestClient):
+    """Проверка возврата HTTP 404 при запросе профиля несуществующего пользователя (UserNotFound)."""
+    from application.services.auth_service import TokenService
+    token_service = TokenService()
+    user_id = uuid.uuid4()
+    tokens = token_service.create_token_pair(user_id)
+
+    with patch("application.adapters.database.repositories.user_repo.UserRepository.get_by_id", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = None
+        resp = client.get(
+            "/api/v1/users/me",
+            headers={"Authorization": f"Bearer {tokens.access_token}"},
+        )
+        assert resp.status_code == 404
+        assert "не найден" in resp.json()["detail"].lower()
+
+
+def test_cellar_item_not_found_returns_404(client: TestClient):
+    """Проверка возврата HTTP 404 при удалении несуществующей позиции из погреба (CellarItemNotFound)."""
+    from application.services.auth_service import TokenService
+    token_service = TokenService()
+    user_id = uuid.uuid4()
+    tokens = token_service.create_token_pair(user_id)
+    item_id = uuid.uuid4()
+
+    with patch("application.adapters.database.repositories.cellar_repo.CellarRepository.get_by_id", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = None
+        resp = client.delete(
+            f"/api/v1/users/cellar/{item_id}",
+            headers={"Authorization": f"Bearer {tokens.access_token}"},
+        )
+        assert resp.status_code == 404
+        assert "не найдена" in resp.json()["detail"].lower()
+
+
+

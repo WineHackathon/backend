@@ -5,6 +5,8 @@ import uuid
 from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field
 
+from application.dto.user import UserDTO
+
 
 class TokenPayloadDTO(BaseModel):
     """Строго типизированный payload JWT токена (exp - Unix timestamp NumericDate по RFC 7519)."""
@@ -48,9 +50,6 @@ class YandexAuthDTO(BaseModel):
 
 class AuthResponseDTO(BaseModel):
     """Ответ аутентификации с данными пользователя и токенами."""
-    user: "UserDTO"
+    user: UserDTO
     tokens: TokenPairDTO
-
-from application.dto.user import UserDTO  # noqa: E402
-AuthResponseDTO.model_rebuild()
 

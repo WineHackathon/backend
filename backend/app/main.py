@@ -10,6 +10,15 @@ from fastapi.responses import JSONResponse
 import redis.asyncio as redis
 
 from application.adapters.database.db_session import global_init_db, close_db
+from application.exceptions.domain_exceptions import (
+    DomainException,
+    WineNotFound,
+    UserNotFound,
+    CellarItemNotFound,
+    UserAlreadyExists,
+    AuthenticationError,
+    ScanQuotaExceeded,
+)
 from backend.app.config import settings
 from backend.app.api.v1.eval import router as eval_router
 from backend.app.api.v1.scan import router as scan_router
@@ -83,6 +92,33 @@ app.include_router(catalog_router)
 app.include_router(users_router)
 app.include_router(auth_router)
 app.include_router(sommelier_router)
+
+# Глобальные обработчики доменных исключений
+@app.exception_handler(WineNotFound)
+@app.exception_handler(UserNotFound)
+@app.exception_handler(CellarItemNotFound)
+async def not_found_exception_handler(request: Request, exc: DomainException):
+    return JSONResponse(status_code=404, content={"detail": exc.message})
+
+
+@app.exception_handler(UserAlreadyExists)
+async def conflict_exception_handler(request: Request, exc: UserAlreadyExists):
+    return JSONResponse(status_code=409, content={"detail": exc.message})
+
+
+@app.exception_handler(AuthenticationError)
+async def auth_exception_handler(request: Request, exc: AuthenticationError):
+    return JSONResponse(status_code=401, content={"detail": exc.message})
+
+
+@app.exception_handler(ScanQuotaExceeded)
+async def quota_exception_handler(request: Request, exc: ScanQuotaExceeded):
+    return JSONResponse(status_code=429, content={"detail": exc.message})
+
+
+@app.exception_handler(DomainException)
+async def domain_exception_handler(request: Request, exc: DomainException):
+    return JSONResponse(status_code=400, content={"detail": exc.message})
 
 
 @app.get("/health", tags=["Health"])
