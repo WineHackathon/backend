@@ -27,12 +27,14 @@ class Settings(BaseSettings):
     redis_port: int = int(os.getenv("REDIS_PORT", "6379"))
     redis_password: str | None = os.getenv("REDIS_PASSWORD", None)
 
-    # S3 Storage
-    s3_endpoint_url: str = os.getenv("S3_ENDPOINT_URL", "http://localhost:9000")
-    s3_access_key: str = os.getenv("MINIO_ROOT_USER", "minio_admin")
-    s3_secret_key: str = os.getenv("MINIO_ROOT_PASSWORD", "minio_secure_password_123")
-    s3_scans_bucket: str = os.getenv("S3_SCANS_BUCKET", "wine-scans")
-    s3_catalog_bucket: str = os.getenv("S3_CATALOG_BUCKET", "wine-catalog")
+    # S3 Storage (FirstVDS / AWS S3 compatible)
+    s3_endpoint_url: str = os.getenv("S3_ENDPOINT_URL", "https://s3.firstvds.ru:443")
+    s3_access_key: str = os.getenv("S3_AWS_ACCESS_KEY_ID") or os.getenv("S3_ACCESS_KEY", "")
+    s3_secret_key: str = os.getenv("S3_AWS_SECRET_ACCESS_KEY") or os.getenv("S3_SECRET_KEY", "")
+    s3_bucket_name: str = os.getenv("S3_BUCKET_NAME", "wine-hack")
+    s3_region_name: str = os.getenv("S3_REGION_NAME", "ru-central-1")
+    s3_scans_bucket: str = os.getenv("S3_SCANS_BUCKET", os.getenv("S3_BUCKET_NAME", "wine-hack"))
+    s3_catalog_bucket: str = os.getenv("S3_CATALOG_BUCKET", os.getenv("S3_BUCKET_NAME", "wine-hack"))
 
     # Sommelier & ML Services URLs
     sommelier_service_url: str = os.getenv("SOMMELIER_SERVICE_URL", "http://sommelier:8001")

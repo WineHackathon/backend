@@ -16,12 +16,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install python dependencies
-COPY requirements.txt .
+COPY ml/requirements.txt requirements.txt
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
 # Copy application source
-COPY . .
+COPY ml /app/ml
 
 # Create data directory with permissions
 RUN mkdir -p /app/data && \

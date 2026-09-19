@@ -2,11 +2,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY sommelier/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY ../application /app/application
-COPY . /app/sommelier
+COPY application /app/application
+COPY sommelier /app/sommelier
 
 ENV PYTHONPATH="/app"
 

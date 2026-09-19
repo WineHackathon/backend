@@ -3,12 +3,12 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Установка зависимостей
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Копирование слоя application и сервиса backend
-COPY ../application /app/application
-COPY . /app/backend
+COPY application /app/application
+COPY backend /app/backend
 
 ENV PYTHONPATH="/app"
 

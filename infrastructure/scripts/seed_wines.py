@@ -81,6 +81,7 @@ async def seed_data(csv_path: str) -> None:
         inserted_count = 0
         skipped_count = 0
 
+        seen_slugs: set[str] = set()
         for row in rows:
             name = (row.get("Название вина") or "").strip()
             category = (row.get("Категория") or "Тихое").strip()
@@ -92,9 +93,11 @@ async def seed_data(csv_path: str) -> None:
             slug = (row.get("Slug") or "").strip()
             photo = (row.get("Название фото") or "").strip() or None
 
-            if not slug or not name:
+            if not slug or not name or slug in seen_slugs:
                 skipped_count += 1
                 continue
+
+            seen_slugs.add(slug)
 
             # Проверка существующего вина
             existing = await session.scalar(select(Wine.id).where(Wine.slug == slug))
