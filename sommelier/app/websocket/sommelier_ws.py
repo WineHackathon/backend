@@ -29,16 +29,8 @@ router = APIRouter(tags=["Sommelier WebSocket"])
 @asynccontextmanager
 async def _get_catalog_service():
     """Безопасное получение сервиса каталога с сессией БД в контекстном менеджере."""
-    session = None
-    try:
-        session = create_session()
+    async with create_session() as session:
         yield CatalogService(session)
-    except Exception as e:
-        logger.warning(f"Не удалось инициализировать CatalogService в WebSocket: {e}")
-        yield None
-    finally:
-        if session:
-            await session.close()
 
 
 @router.websocket("/ws/sommelier")
@@ -312,8 +304,7 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
 
                     # Фоновое сохранение вкусового профиля и сессии предпочтений пользователя в БД
                     try:
-                        session = create_session()
-                        try:
+                        async with create_session() as session:
                             taste_service = TasteProfileService(session)
                             session_id = str(uuid.uuid4())
                             recommended_slugs = [
@@ -327,10 +318,8 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                                 raw_answers=answers,
                                 recommended_slugs=recommended_slugs,
                             )
-                        finally:
-                            await session.close()
                     except Exception as exc:
-                        logger.warning(f"Не удалось обновить вкусовой профиль пользователя {user_id}: {exc}")
+                        logger.warning("Не удалось обновить вкусовой профиль пользователя %s: %s", user_id, exc)
 
                     await websocket.send_json({
                         "type": "completed",

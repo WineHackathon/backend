@@ -1,7 +1,9 @@
 """
 Эндпоинты аутентификации и регистрации (/api/v1/auth).
+Реализует паттерн Thin Handlers: доменные исключения (AuthenticationError, UserAlreadyExists)
+автоматически перехватываются глобальными обработчиками в main.py.
 """
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.security import HTTPAuthorizationCredentials
 import redis.asyncio as redis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,15 +12,12 @@ from application.adapters.database.db_session import get_session
 from application.dto.auth import (
     LoginRequestDTO,
     RegisterRequestDTO,
-    TokenPairDTO,
     AuthResponseDTO,
     RefreshTokenRequestDTO,
     YandexAuthDTO,
     LogoutRequestDTO,
     LogoutResponseDTO,
 )
-from application.dto.user import UserDTO
-from application.exceptions.domain_exceptions import AuthenticationError, UserAlreadyExists
 from application.services.auth_service import AuthService
 from backend.app.config import settings
 from backend.app.dependencies import security, get_redis_client
@@ -49,19 +48,14 @@ async def register(
     ip_address, user_agent, extracted_device_name = _extract_request_meta(request)
     device_name = dto.device_name or extracted_device_name
     service = AuthService(session, max_user_sessions=settings.max_user_sessions)
-    try:
-        user_dto, tokens = await service.register(
-            dto=dto,
-            ip_address=ip_address,
-            user_agent=user_agent,
-            device_name=device_name,
-        )
-        return AuthResponseDTO(
-            user=user_dto,
-            tokens=tokens,
-        )
-    except UserAlreadyExists as e:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=e.message)
+
+    user_dto, tokens = await service.register(
+        dto=dto,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        device_name=device_name,
+    )
+    return AuthResponseDTO(user=user_dto, tokens=tokens)
 
 
 @router.post("/login", response_model=AuthResponseDTO, summary="Вход по email и паролю")
@@ -76,20 +70,15 @@ async def login(
     device_name = dto.device_name or extracted_device_name
     device_fingerprint = dto.device_fingerprint or request.headers.get("x-device-fingerprint")
     service = AuthService(session, redis_client=redis_client, max_user_sessions=settings.max_user_sessions)
-    try:
-        user_dto, tokens = await service.login(
-            dto=dto,
-            ip_address=ip_address,
-            user_agent=user_agent,
-            device_name=device_name,
-            device_fingerprint=device_fingerprint,
-        )
-        return AuthResponseDTO(
-            user=user_dto,
-            tokens=tokens,
-        )
-    except AuthenticationError as e:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=e.message)
+
+    user_dto, tokens = await service.login(
+        dto=dto,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        device_name=device_name,
+        device_fingerprint=device_fingerprint,
+    )
+    return AuthResponseDTO(user=user_dto, tokens=tokens)
 
 
 @router.post("/refresh", response_model=AuthResponseDTO, summary="Обновление пары токенов (refresh)")
@@ -102,14 +91,9 @@ async def refresh_tokens(
     """Обновление пары токенов по валидному refresh-токену с проверкой сессии в БД и отзыва (blacklist)."""
     ip_address, _, _ = _extract_request_meta(request)
     service = AuthService(session, redis_client=redis_client, max_user_sessions=settings.max_user_sessions)
-    try:
-        user_dto, tokens = await service.refresh_tokens(dto, ip_address=ip_address)
-        return AuthResponseDTO(
-            user=user_dto,
-            tokens=tokens,
-        )
-    except AuthenticationError as e:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=e.message)
+
+    user_dto, tokens = await service.refresh_tokens(dto, ip_address=ip_address)
+    return AuthResponseDTO(user=user_dto, tokens=tokens)
 
 
 @router.post("/logout", response_model=LogoutResponseDTO, summary="Выход из системы (logout)")
@@ -161,20 +145,15 @@ async def yandex_oauth_callback(
         yandex_redirect_uri=settings.yandex_redirect_uri,
         max_user_sessions=settings.max_user_sessions,
     )
-    try:
-        user_dto, tokens = await service.auth_yandex(
-            code=code,
-            device_fingerprint=x_device_fingerprint,
-            ip_address=ip_address,
-            user_agent=user_agent,
-            device_name=device_name,
-        )
-        return AuthResponseDTO(
-            user=user_dto,
-            tokens=tokens,
-        )
-    except AuthenticationError as e:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=e.message)
+
+    user_dto, tokens = await service.auth_yandex(
+        code=code,
+        device_fingerprint=x_device_fingerprint,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        device_name=device_name,
+    )
+    return AuthResponseDTO(user=user_dto, tokens=tokens)
 
 
 @router.post("/yandex", response_model=AuthResponseDTO, summary="Авторизация через Яндекс ID по коду (SPA/mobile)")
@@ -194,21 +173,12 @@ async def auth_yandex(
         yandex_redirect_uri=settings.yandex_redirect_uri,
         max_user_sessions=settings.max_user_sessions,
     )
-    try:
-        user_dto, tokens = await service.auth_yandex(
-            code=dto.code,
-            device_fingerprint=device_fingerprint,
-            ip_address=ip_address,
-            user_agent=user_agent,
-            device_name=device_name,
-        )
-        return AuthResponseDTO(
-            user=user_dto,
-            tokens=tokens,
-        )
-    except AuthenticationError as e:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=e.message)
 
-
-
-
+    user_dto, tokens = await service.auth_yandex(
+        code=dto.code,
+        device_fingerprint=device_fingerprint,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        device_name=device_name,
+    )
+    return AuthResponseDTO(user=user_dto, tokens=tokens)

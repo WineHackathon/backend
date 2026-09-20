@@ -7,6 +7,8 @@ from .cellar_service import CellarService
 from .taste_profile_service import TasteProfileService
 from .auth_service import AuthService
 from .token_service import TokenService
+from .scan_service import ScanService
+from .onboarding_service import SommelierOnboardingService
 from .security import hash_password, verify_password
 
 __all__ = [
@@ -16,6 +18,9 @@ __all__ = [
     "TasteProfileService",
     "AuthService",
     "TokenService",
+    "ScanService",
+    "SommelierOnboardingService",
     "hash_password",
     "verify_password",
 ]
+

@@ -21,6 +21,18 @@ class ScanRepository:
         await self.session.flush()
         return scan
 
+    async def get_by_id(self, scan_id: uuid.UUID) -> UserScanHistory | None:
+        """Получение записи сканирования по ID."""
+        stmt = select(UserScanHistory).where(UserScanHistory.id == scan_id)
+        res = await self.session.execute(stmt)
+        return res.scalar_one_or_none()
+
+    async def get_by_image_id(self, image_id: str) -> UserScanHistory | None:
+        """Получение записи сканирования по image_id."""
+        stmt = select(UserScanHistory).where(UserScanHistory.image_id == image_id)
+        res = await self.session.execute(stmt)
+        return res.scalar_one_or_none()
+
     async def get_user_scans(self, user_id: uuid.UUID, limit: int = 20) -> Sequence[UserScanHistory]:
         """Получение истории сканирований конкретного пользователя."""
         stmt = (

@@ -29,7 +29,6 @@ class UserScanHistory(Base, UUIDMixin, TimestampMixin):
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         GUID,
         ForeignKey("users.id", ondelete="SET NULL"),
-        index=True,
         nullable=True,
         comment="Идентификатор пользователя (если авторизован)",
     )
@@ -62,7 +61,6 @@ class UserScanHistory(Base, UUIDMixin, TimestampMixin):
     )
     device_fingerprint: Mapped[str | None] = mapped_column(
         String(255),
-        index=True,
         nullable=True,
         comment="Фингерпринт устройства анонимного пользователя",
     )
@@ -83,7 +81,7 @@ class UserScanHistory(Base, UUIDMixin, TimestampMixin):
         comment="Текст ошибки при неудачном распознавании",
     )
 
-    user: Mapped["User"] = relationship("User", back_populates="scan_history")
+    user: Mapped["User | None"] = relationship("User", back_populates="scan_history")
 
     __table_args__ = (
         Index("idx_scan_user_created", "user_id", "created_at"),

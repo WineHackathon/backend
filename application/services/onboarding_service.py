@@ -2,7 +2,16 @@
 Сервис онбординга и адаптивного диалога с цифровым сомелье.
 Реализует сценарий «Оптимальный первый диалог» из 5 вопросов и адаптивных уточнений.
 """
-from application.dto.sommelier import OnboardingQuestionDTO
+import uuid
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from application.dto.sommelier import (
+    OnboardingQuestionDTO,
+    OnboardingAnswerDTO,
+    OnboardingStateDTO,
+)
+from application.services.catalog_service import CatalogService
+from application.services.taste_profile_service import TasteProfileService
 
 
 class SommelierOnboardingService:
@@ -129,3 +138,73 @@ class SommelierOnboardingService:
                 )
 
         return self.get_question(step)
+
+    async def process_answer(
+        self,
+        dto: OnboardingAnswerDTO,
+        user_id: uuid.UUID | None,
+        session: AsyncSession,
+    ) -> OnboardingStateDTO:
+        """
+        Оркестрация обработки шага онбординга:
+        - Шаги 1-4: адаптивный выбор следующего вопроса.
+        - Шаг 5 (аноним): пейволл / требование регистрации (registration_required: true).
+        - Шаг 5 (авторизован): подбор вин по вкусовой матрице и фоновое обновление профиля.
+        """
+        step, code, answer_text, current_answers = dto.get_parsed_data()
+        current_answers[code] = answer_text
+
+        # Шаги 1-4: отдаем следующий адаптивный вопрос
+        if step < 5:
+            next_step = step + 1
+            next_q = self.get_adaptive_question(step=next_step, answers=current_answers)
+            return OnboardingStateDTO(
+                current_step=step,
+                answers=current_answers,
+                next_question=next_q,
+                completed=False,
+                candidates=[],
+                registration_required=False,
+            )
+
+        # Шаг 5: опросник завершен
+        if not user_id:
+            return OnboardingStateDTO(
+                current_step=5,
+                answers=current_answers,
+                next_question=None,
+                completed=True,
+                candidates=[],
+                registration_required=True,
+            )
+
+        # Авторизованный пользователь: поиск кандидатов по вкусовой матрице
+        catalog_service = CatalogService(session)
+        candidates = await catalog_service.search_by_taste_matrix(
+            category=current_answers.get("category"),
+            target_sweetness=1.2 if "сух" in str(current_answers.get("sweetness", "")).lower() else 3.0,
+            target_body=4.0 if "плотн" in str(current_answers.get("body", "")).lower() else 2.5,
+            target_acidity=4.0 if "свежест" in str(current_answers.get("acidity", "")).lower() else 2.5,
+            limit=5,
+        )
+
+        # Фоновое обновление вкусового профиля пользователя
+        taste_service = TasteProfileService(session)
+        session_id = str(uuid.uuid4())
+        recommended_slugs = [c.slug for c in candidates]
+        await taste_service.record_preferences_and_update_profile(
+            user_id=user_id,
+            session_id=session_id,
+            raw_answers=current_answers,
+            recommended_slugs=recommended_slugs,
+        )
+
+        return OnboardingStateDTO(
+            current_step=5,
+            answers=current_answers,
+            next_question=None,
+            completed=True,
+            candidates=candidates,
+            registration_required=False,
+        )
+

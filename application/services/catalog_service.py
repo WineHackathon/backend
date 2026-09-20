@@ -44,7 +44,7 @@ class CatalogService:
             sugar_type=wine.sugar_type,
             price_rub=wine.price_rub,
             image_s3_key=wine.image_s3_key,
-            image_url=f"/s3/catalog/{wine.image_s3_key}" if wine.image_s3_key else None,
+            image_url=getattr(wine, "image_url", None) or (f"/s3/catalog/{wine.image_s3_key}" if wine.image_s3_key else None),
             sweetness=wine.sweetness,
             body=wine.body,
             acidity=wine.acidity,

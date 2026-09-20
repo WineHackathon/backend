@@ -2,8 +2,9 @@
 Прикладной сервис фоновой агрегации вкусового профиля пользователя (Taste Profile).
 Сохраняет сырые данные диалога и обновляет экспоненциальное скользящее среднее (EMA) вкусов.
 """
-import uuid
 import logging
+import uuid
+from typing import Any, Sequence
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.adapters.database.models.preference_history import UserPreferenceHistory
@@ -13,6 +14,51 @@ from application.adapters.database.transaction_manager import TransactionManager
 from application.dto.user import TasteProfileDTO, PreferenceSessionCreateDTO
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_scale_value(val: Any, keyword_map: dict[str, float], default: float | None = None) -> float | None:
+    """
+    Безопасное извлечение числовой шкалы вкуса (1.0 - 5.0).
+    Поддерживает как явные числа (float/int), так и текстовые ключевые слова.
+    """
+    if val is None:
+        return default
+    if isinstance(val, (int, float)):
+        return max(1.0, min(5.0, float(val)))
+    if isinstance(val, str):
+        val_lower = val.lower().strip()
+        for kw, score in keyword_map.items():
+            if kw in val_lower:
+                return score
+    return default
+
+
+def _extract_aromas(val: Any) -> list[str]:
+    """
+    Безопасное извлечение списка ароматов из строк, списков, кортежей или множеств.
+    Полностью защищено от AttributeError при передаче list вместо str.
+    """
+    if not val:
+        return []
+    if isinstance(val, (list, set, tuple)):
+        return [str(item).strip().lower() for item in val if str(item).strip()]
+    if isinstance(val, str):
+        items: list[str] = []
+        for part in val.replace(";", ",").split(","):
+            cleaned = part.strip().lower()
+            if cleaned:
+                items.append(cleaned)
+        return items
+    return []
+
+
+def _calculate_ema(curr: float | None, new_val: float | None, default: float, alpha: float = 0.35) -> float:
+    """Расчет экспоненциального скользящего среднего (EMA) с округлением до 2 знаков."""
+    if new_val is None:
+        return curr if curr is not None else default
+    if curr is None:
+        return round(new_val, 2)
+    return round(curr * (1.0 - alpha) + new_val * alpha, 2)
 
 
 class TasteProfileService:
@@ -27,12 +73,12 @@ class TasteProfileService:
     async def record_preferences_and_update_profile(
         self,
         dto: PreferenceSessionCreateDTO | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> TasteProfileDTO | None:
         """
-        Фоновая задача (на фоне на бэке):
-        1. Сохранение истории предпочтений (сырые данные) в UserPreferenceHistory.
-        2. Агрегация вкусового профиля пользователя (User.taste_profile) через EMA.
+        Фоновая задача обновления вкусового профиля:
+        1. Сохранение сырой истории диалога в UserPreferenceHistory.
+        2. Агрегация вкусового профиля авторизованного пользователя (User.taste_profile) через EMA.
         """
         if dto is None:
             dto = PreferenceSessionCreateDTO(**kwargs)
@@ -57,64 +103,64 @@ class TasteProfileService:
         if not user:
             return None
 
-        current_profile = user.taste_profile or {}
-        raw_answers = dto.raw_answers
+        current_profile: dict[str, Any] = user.taste_profile or {}
+        raw_answers: dict[str, Any] = dto.raw_answers or {}
 
-        # Маппинг ответов на числовые шкалы
-        # 1. Категория
-        cat = raw_answers.get("category", "")
-        preferred_cats = current_profile.get("preferred_categories", [])
-        if cat and cat not in preferred_cats:
-            preferred_cats.append(cat)
+        # 1. Предпочитаемые категории
+        preferred_cats: list[str] = list(current_profile.get("preferred_categories", []))
+        cat_ans = raw_answers.get("category")
+        if isinstance(cat_ans, list):
+            for c in cat_ans:
+                c_str = str(c).strip()
+                if c_str and c_str not in preferred_cats:
+                    preferred_cats.append(c_str)
+        elif isinstance(cat_ans, str) and cat_ans.strip():
+            c_str = cat_ans.strip()
+            if c_str not in preferred_cats:
+                preferred_cats.append(c_str)
 
         # 2. Сладость (1.0 - 5.0)
-        sweet_ans = raw_answers.get("sweetness", "").lower()
-        new_sweetness = 1.2 if "сух" in sweet_ans else (3.0 if "слад" in sweet_ans else None)
+        new_sweetness = _parse_scale_value(
+            raw_answers.get("sweetness"),
+            keyword_map={"сух": 1.2, "слад": 3.0, "полусух": 1.8, "полуслад": 2.6},
+        )
 
         # 3. Тело / Плотность (1.0 - 5.0)
-        body_ans = raw_answers.get("body", "").lower()
-        new_body = 1.5 if "легк" in body_ans else (4.5 if "плотн" in body_ans else 3.0)
+        new_body = _parse_scale_value(
+            raw_answers.get("body"),
+            keyword_map={"легк": 1.5, "плотн": 4.5, "мощн": 4.5, "средн": 3.0},
+        )
 
         # 4. Кислотность / Свежесть (1.0 - 5.0)
-        acid_ans = raw_answers.get("acidity", "").lower()
-        new_acid = 4.0 if "свежест" in acid_ans else 2.0
+        new_acid = _parse_scale_value(
+            raw_answers.get("acidity"),
+            keyword_map={"свежест": 4.0, "ярк": 4.5, "мягк": 2.0},
+        )
 
         # 5. Выдержка в дубе (1.0 - 5.0)
-        oak_ans = raw_answers.get("oak", "").lower()
-        new_oak = 4.0 if "дуб" in oak_ans or "бочк" in oak_ans else 2.0
+        new_oak = _parse_scale_value(
+            raw_answers.get("oak"),
+            keyword_map={"дуб": 4.0, "бочк": 4.0, "без дуб": 1.5, "сталь": 1.5},
+        )
 
-        # 6. Ароматы
-        aroma_ans = raw_answers.get("aromas", "")
+        # 6. Любимые ароматы
         fav_aromas = set(current_profile.get("favorite_aromas", []))
-        if aroma_ans:
-            for item in aroma_ans.replace(";", ",").split(","):
-                cleaned = item.strip().lower()
-                if cleaned:
-                    fav_aromas.add(cleaned)
+        for aroma in _extract_aromas(raw_answers.get("aromas")):
+            fav_aromas.add(aroma)
 
         # Расчет экспоненциального скользящего среднего (alpha = 0.35)
-        alpha = 0.35
-
-        def ema(curr: float | None, new_val: float | None, default: float) -> float:
-            if new_val is None:
-                return curr if curr is not None else default
-            if curr is None:
-                return new_val
-            return round(curr * (1 - alpha) + new_val * alpha, 2)
-
-        updated_profile = {
+        updated_profile: dict[str, Any] = {
             "preferred_categories": preferred_cats,
-            "sweetness_pref": ema(current_profile.get("sweetness_pref"), new_sweetness, 2.0),
-            "body_pref": ema(current_profile.get("body_pref"), new_body, 3.0),
-            "acidity_pref": ema(current_profile.get("acidity_pref"), new_acid, 3.0),
-            "oak_pref": ema(current_profile.get("oak_pref"), new_oak, 2.5),
-            "favorite_aromas": list(fav_aromas)[:15],
+            "sweetness_pref": _calculate_ema(current_profile.get("sweetness_pref"), new_sweetness, default=2.0),
+            "body_pref": _calculate_ema(current_profile.get("body_pref"), new_body, default=3.0),
+            "acidity_pref": _calculate_ema(current_profile.get("acidity_pref"), new_acid, default=3.0),
+            "oak_pref": _calculate_ema(current_profile.get("oak_pref"), new_oak, default=2.5),
+            "favorite_aromas": sorted(list(fav_aromas))[:15],
             "disliked_aromas": current_profile.get("disliked_aromas", []),
         }
 
         async with self.tm:
             await self.user_repo.update_taste_profile(dto.user_id, updated_profile)
 
-        logger.info(f"Вкусовой профиль пользователя {dto.user_id} успешно обновлен: {updated_profile}")
+        logger.info("Вкусовой профиль пользователя %s успешно обновлен: %s", dto.user_id, updated_profile)
         return TasteProfileDTO(**updated_profile)
-

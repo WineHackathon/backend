@@ -3,7 +3,7 @@
 """
 import uuid
 from typing import Sequence
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -33,8 +33,8 @@ class UserRepository:
         return res.scalar_one_or_none()
 
     async def get_by_email(self, email: str) -> User | None:
-        """Поиск пользователя по Email."""
-        stmt = select(User).where(User.email == email.lower().strip())
+        """Поиск пользователя по Email (регистронезависимо с нормализацией)."""
+        stmt = select(User).where(func.lower(User.email) == email.lower().strip())
         res = await self.session.execute(stmt)
         return res.scalar_one_or_none()
 

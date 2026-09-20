@@ -75,32 +75,35 @@ class SommelierLLMClient:
         max_retries = 2
         backoff = 0.2
 
-        for attempt in range(max_retries):
-            try:
-                async with httpx.AsyncClient(timeout=8.0) as client:
-                    resp = await client.post(
-                        f"{self.base_url}/chat/completions",
-                        headers=headers,
-                        json=data,
-                    )
-                    if resp.status_code == 200:
-                        res_json = resp.json()
-                        msg = res_json["choices"][0]["message"]
-                        content = msg.get("content")
-                        if content and content.strip():
-                            return content.strip()
-                        return self._build_smart_fallback_reply(system_prompt, messages)
-                    elif resp.status_code in (429, 500, 502, 503, 504):
-                        logger.warning(f"LLM API вернул статус {resp.status_code}, попытка {attempt + 1}/{max_retries}")
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                for attempt in range(max_retries):
+                    try:
+                        resp = await client.post(
+                            f"{self.base_url}/chat/completions",
+                            headers=headers,
+                            json=data,
+                        )
+                        if resp.status_code == 200:
+                            res_json = resp.json()
+                            msg = res_json["choices"][0]["message"]
+                            content = msg.get("content")
+                            if content and content.strip():
+                                return content.strip()
+                            return self._build_smart_fallback_reply(system_prompt, messages)
+                        elif resp.status_code in (429, 500, 502, 503, 504):
+                            logger.warning("LLM API вернул статус %d, попытка %d/%d", resp.status_code, attempt + 1, max_retries)
+                            await asyncio.sleep(backoff)
+                            backoff *= 1.5
+                        else:
+                            logger.error("Неожиданный ответ LLM API: %d %s", resp.status_code, resp.text)
+                            break
+                    except Exception as e:
+                        logger.warning("Ошибка сетевого запроса к LLM: %s, попытка %d/%d", e, attempt + 1, max_retries)
                         await asyncio.sleep(backoff)
                         backoff *= 1.5
-                    else:
-                        logger.error(f"Неожиданный ответ LLM API: {resp.status_code} {resp.text}")
-                        break
-            except Exception as e:
-                logger.warning(f"Ошибка сетевого запроса к LLM: {e}, попытка {attempt + 1}/{max_retries}")
-                await asyncio.sleep(backoff)
-                backoff *= 1.5
+        except Exception as client_err:
+            logger.warning("Ошибка инициализации HTTP-клиента LLM: %s", client_err)
 
         # Интеллектуальный Fallback при недоступности внешнего API
         return self._build_smart_fallback_reply(system_prompt, messages)

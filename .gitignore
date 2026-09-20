@@ -46,4 +46,5 @@ clickdata/
 
 # Test scripts and temporary CLI tools
 scripts/test_ws_chat.py
+флоу/
 

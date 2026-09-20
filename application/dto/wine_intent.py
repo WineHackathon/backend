@@ -2,7 +2,7 @@
 DTO модели для структурированного извлечения намерений поиска вин.
 """
 from typing import Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class WineSearchIntent(BaseModel):
@@ -19,3 +19,5 @@ class WineSearchIntent(BaseModel):
     max_price_rub: float | None = Field(default=None, gt=0, description="Максимальная цена в рублях")
     search_keywords: list[str] = Field(default_factory=list, description="Ключевые слова для текстового поиска")
     is_recommendation_request: bool = True
+
+    model_config = ConfigDict(from_attributes=True)

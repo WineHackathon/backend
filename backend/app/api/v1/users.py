@@ -138,14 +138,13 @@ async def revoke_all_my_other_sessions(
     session: AsyncSession = Depends(get_session),
 ):
     """Завершение всех остальных активных сессий пользователя кроме текущей."""
+    auth_service = AuthService(session)
     if not current_session_id:
-        # Если session_id в токене не найден, завершаем все сессии кроме последней
-        auth_service = AuthService(session)
+        # Если session_id в токене не найден, завершаем все сессии кроме первой (самой недавней)
         sessions = await auth_service.list_user_sessions(user_id)
         if sessions:
             current_session_id = sessions[0].id
 
-    auth_service = AuthService(session)
     count = await auth_service.revoke_all_other_sessions(user_id, current_session_id) if current_session_id else 0
     return RevokeAllSessionsResponseDTO(
         status="ok",

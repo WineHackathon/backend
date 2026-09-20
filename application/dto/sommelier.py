@@ -1,7 +1,8 @@
 """
 DTO схемы для диалога с цифровым сомелье и 5-вопросного онбординга.
 """
-from pydantic import BaseModel, Field
+from typing import Any
+from pydantic import BaseModel, ConfigDict, Field
 from application.dto.wine import WineDTO
 
 
@@ -13,8 +14,7 @@ class OnboardingQuestionDTO(BaseModel):
     options: list[str]
     adaptive: bool = False
 
-
-from typing import Any
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OnboardingAnswerDTO(BaseModel):
@@ -50,11 +50,15 @@ class OnboardingStateDTO(BaseModel):
     candidates: list[WineDTO] = Field(default_factory=list)
     registration_required: bool = False
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class SommelierChatMessageDTO(BaseModel):
     """Сообщение в диалоге с сомелье."""
     role: str = Field(description="Роль: user, assistant, system")
     content: str = Field(description="Текст сообщения")
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SommelierChatRequestDTO(BaseModel):
@@ -69,3 +73,5 @@ class SommelierChatResponseDTO(BaseModel):
     recommended_slugs: list[str] = Field(default_factory=list)
     food_pairings: list[str] = Field(default_factory=list)
     registration_required: bool = False
+
+    model_config = ConfigDict(from_attributes=True)

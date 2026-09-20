@@ -3,7 +3,7 @@ DTO схемы для личного винного погреба.
 """
 import uuid
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from application.adapters.database.models.cellar import CellarStatus
 from application.dto.wine import WineDTO
 
@@ -30,7 +30,7 @@ class CellarItemDTO(BaseModel):
     created_at: datetime
     wine: WineDTO | None = None
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CellarDeleteResponseDTO(BaseModel):
@@ -38,3 +38,4 @@ class CellarDeleteResponseDTO(BaseModel):
     status: str = "deleted"
     item_id: uuid.UUID
 
+    model_config = ConfigDict(from_attributes=True)

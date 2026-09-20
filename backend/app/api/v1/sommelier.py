@@ -1,7 +1,11 @@
+"""
+Эндпоинты цифрового сомелье и онбординга (/api/v1/sommelier).
+Тонкие контроллеры: бизнес-логика шагов делегирована в SommelierOnboardingService.
+"""
 import logging
 import uuid
 import httpx
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.adapters.database.db_session import get_session
@@ -12,8 +16,6 @@ from application.dto.sommelier import (
     SommelierChatRequestDTO,
     SommelierChatResponseDTO,
 )
-from application.services.catalog_service import CatalogService
-from application.services.taste_profile_service import TasteProfileService
 from application.services.onboarding_service import SommelierOnboardingService
 from backend.app.config import settings
 from backend.app.dependencies import get_optional_user_id
@@ -40,66 +42,12 @@ async def submit_onboarding_answer(
 ):
     """
     Обработка шага онбординга:
-    - Если пользователь анонимный и дошел до конца: возвращается registration_required: true и тизер.
-    - Если пользователь авторизован: возвращаются подобранные винные карточки и запускается фоновое обновление профиля.
+    Делегирует оркестрацию в SommelierOnboardingService.process_answer.
     """
-    step, code, answer_text, current_answers = dto.get_parsed_data()
-    current_answers[code] = answer_text
-
-    # Проверка, есть ли следующий вопрос
-    if step < 5:
-        next_step = step + 1
-        next_q = onboarding_service.get_adaptive_question(step=next_step, answers=current_answers)
-
-        return OnboardingStateDTO(
-            current_step=step,
-            answers=current_answers,
-            next_question=next_q,
-            completed=False,
-            candidates=[],
-            registration_required=False,
-        )
-
-    # Завершены все 5 вопросов
-    # Если пользователь не авторизован -> отдаем пейволл (registration_required)
-    if not user_id:
-        return OnboardingStateDTO(
-            current_step=5,
-            answers=current_answers,
-            next_question=None,
-            completed=True,
-            candidates=[],
-            registration_required=True,  # Запрос регистрации для получения винных карточек
-        )
-
-    # Для авторизованного пользователя подбираем кандидатов по вкусовой матрице
-    catalog_service = CatalogService(session)
-    candidates = await catalog_service.search_by_taste_matrix(
-        category=current_answers.get("category"),
-        target_sweetness=1.2 if "сух" in current_answers.get("sweetness", "").lower() else 3.0,
-        target_body=4.0 if "плотн" in current_answers.get("body", "").lower() else 2.5,
-        target_acidity=4.0 if "свежест" in current_answers.get("acidity", "").lower() else 2.5,
-        limit=5,
-    )
-
-    # Фоновое обновление профиля пользователя
-    taste_service = TasteProfileService(session)
-    session_id = str(uuid.uuid4())
-    recommended_slugs = [c.slug for c in candidates]
-    await taste_service.record_preferences_and_update_profile(
+    return await onboarding_service.process_answer(
+        dto=dto,
         user_id=user_id,
-        session_id=session_id,
-        raw_answers=current_answers,
-        recommended_slugs=recommended_slugs,
-    )
-
-    return OnboardingStateDTO(
-        current_step=5,
-        answers=current_answers,
-        next_question=None,
-        completed=True,
-        candidates=candidates,
-        registration_required=False,
+        session=session,
     )
 
 
@@ -109,9 +57,9 @@ async def chat_with_sommelier(
     user_id: uuid.UUID | None = Depends(get_optional_user_id),
 ):
     """
-    HTTP проксирование диалога в специализированный сервис sommelier.
+    HTTP проксирование диалога в специализированный сервис сомелье.
+    Неавторизованным пользователям возвращает требование регистрации.
     """
-    # Проверка авторизации: неавторизованным возвращаем требование регистрации
     if not user_id:
         return SommelierChatResponseDTO(
             reply="Чтобы получить персонализированную рекомендацию вин от цифрового сомелье, пожалуйста, зарегистрируйтесь или войдите в аккаунт.",
@@ -129,9 +77,9 @@ async def chat_with_sommelier(
             if resp.status_code == 200:
                 return resp.json()
     except Exception as exc:
-        logger.warning(f"Ошибка обращения к сервису сомелье: {exc}. Использование fallback ответа.")
+        logger.warning("Ошибка обращения к сервису сомелье: %s. Использование fallback ответа.", exc)
 
-    # Интеллектуальный fallback
+    # Интеллектуальный fallback при недоступности внешнего сервиса
     return SommelierChatResponseDTO(
         reply="Здравствуйте! Я ваш цифровой сомелье. Выберите категорию или пройдите короткий опрос из 5 вопросов для точного подбора!",
         recommended_slugs=[],

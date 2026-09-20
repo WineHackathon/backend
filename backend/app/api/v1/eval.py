@@ -5,7 +5,7 @@
 from fastapi import APIRouter, Depends, File, UploadFile
 from application.dto.scan import EvaluationResponseDTO
 from backend.app.dependencies import get_ml_dispatcher
-from backend.app.services.ml_dispatcher import MLDispatcher
+from application.adapters.ml.ml_dispatcher import MLDispatcher
 
 router = APIRouter(tags=["Чекер хакатона (Evaluator)"])
 

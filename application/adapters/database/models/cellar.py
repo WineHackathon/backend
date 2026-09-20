@@ -23,7 +23,6 @@ class UserCellar(Base, UUIDMixin, TimestampMixin):
     user_id: Mapped[uuid.UUID] = mapped_column(
         GUID,
         ForeignKey("users.id", ondelete="CASCADE"),
-        index=True,
         nullable=False,
         comment="Идентификатор пользователя",
     )

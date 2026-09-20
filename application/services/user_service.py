@@ -4,7 +4,7 @@
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from application.adapters.database.models.user import User
+from application.adapters.database.models.user import User, UserRole
 from application.adapters.database.repositories.user_repo import UserRepository
 from application.adapters.database.repositories.scan_repo import ScanRepository
 from application.adapters.database.repositories.preference_repo import PreferenceRepository
@@ -25,6 +25,7 @@ class UserService:
     @staticmethod
     def to_dto(user: User) -> UserDTO:
         """Преобразование модели User в UserDTO."""
+        role_val = user.role.value if hasattr(user.role, "value") else str(user.role or "user")
         return UserDTO(
             id=user.id,
             email=user.email,
@@ -33,6 +34,7 @@ class UserService:
             avatar_url=user.avatar_url,
             is_active=bool(user.is_active) if user.is_active is not None else True,
             is_admin=bool(user.is_admin) if user.is_admin is not None else False,
+            role=role_val,
             taste_profile=user.taste_profile or {},
         )
 
@@ -65,6 +67,13 @@ class UserService:
         if existing:
             raise UserAlreadyExists(dto.email)
 
+        role_val = UserRole.USER
+        if hasattr(dto, "role") and dto.role:
+            try:
+                role_val = UserRole(dto.role.lower())
+            except ValueError:
+                role_val = UserRole.USER
+
         user = User(
             id=uuid.uuid4(),
             email=dto.email.lower().strip(),
@@ -73,6 +82,7 @@ class UserService:
             first_name=dto.first_name,
             last_name=dto.last_name,
             avatar_url=dto.avatar_url,
+            role=role_val,
             taste_profile=dto.taste_profile or {},
         )
 

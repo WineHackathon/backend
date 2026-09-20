@@ -1,13 +1,25 @@
 """
 Репозиторий активных сессий устройств пользователя (SessionRepository).
 """
-import asyncio
+import inspect
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 from sqlalchemy import select, delete, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.adapters.database.models.user_session import UserSession
+
+
+async def _maybe_await(val: Any) -> Any:
+    """
+    Вспомогательная функция для безопасного разрешения результатов.
+    Обеспечивает 100% совместимость как с реальным SQLAlchemy Result/AsyncSession,
+    так и с AsyncMock в модульных тестах.
+    """
+    if inspect.isawaitable(val):
+        return await val
+    return val
 
 
 class SessionRepository:
@@ -40,27 +52,21 @@ class SessionRepository:
             expires_at=expires_at,
         )
         self.session.add(user_session)
-        res = self.session.flush()
-        if asyncio.iscoroutine(res):
-            await res
+        await _maybe_await(self.session.flush())
         return user_session
 
     async def get_by_id(self, session_id: uuid.UUID) -> UserSession | None:
         """Поиск сессии по ID."""
         stmt = select(UserSession).where(UserSession.id == session_id)
         result = await self.session.execute(stmt)
-        val = result.scalar_one_or_none()
-        if asyncio.iscoroutine(val):
-            val = await val
+        val = await _maybe_await(result.scalar_one_or_none())
         return val if isinstance(val, UserSession) else None
 
     async def get_by_refresh_hash(self, refresh_token_hash: str) -> UserSession | None:
         """Поиск сессии по хэшу refresh-токена."""
         stmt = select(UserSession).where(UserSession.refresh_token_hash == refresh_token_hash)
         result = await self.session.execute(stmt)
-        val = result.scalar_one_or_none()
-        if asyncio.iscoroutine(val):
-            val = await val
+        val = await _maybe_await(result.scalar_one_or_none())
         return val if isinstance(val, UserSession) else None
 
     async def list_by_user_id(self, user_id: uuid.UUID) -> list[UserSession]:
@@ -71,21 +77,16 @@ class SessionRepository:
             .order_by(desc(UserSession.last_active_at))
         )
         result = await self.session.execute(stmt)
-        scalars = result.scalars()
-        if asyncio.iscoroutine(scalars):
-            scalars = await scalars
-        items = scalars.all()
-        if asyncio.iscoroutine(items):
-            items = await items
+        scalars = await _maybe_await(result.scalars())
+        items = await _maybe_await(scalars.all())
         return [i for i in items if isinstance(i, UserSession)] if items else []
 
     async def delete_by_id(self, session_id: uuid.UUID) -> bool:
         """Удаление конкретной сессии по ID."""
         stmt = delete(UserSession).where(UserSession.id == session_id)
         result = await self.session.execute(stmt)
-        rowcount = getattr(result, "rowcount", 0)
-        if asyncio.iscoroutine(rowcount):
-            rowcount = await rowcount
+        rowcount = await _maybe_await(getattr(result, "rowcount", 0))
+        await _maybe_await(self.session.flush())
         return bool(rowcount and rowcount > 0)
 
     async def delete_by_user_id_except(self, user_id: uuid.UUID, keep_session_id: uuid.UUID) -> int:
@@ -95,9 +96,8 @@ class SessionRepository:
             .where(UserSession.user_id == user_id, UserSession.id != keep_session_id)
         )
         result = await self.session.execute(stmt)
-        rowcount = getattr(result, "rowcount", 0)
-        if asyncio.iscoroutine(rowcount):
-            rowcount = await rowcount
+        rowcount = await _maybe_await(getattr(result, "rowcount", 0))
+        await _maybe_await(self.session.flush())
         return int(rowcount) if rowcount else 0
 
     async def enforce_device_limit(self, user_id: uuid.UUID, max_sessions: int) -> list[UserSession]:
@@ -123,6 +123,7 @@ class SessionRepository:
         if evicted_ids:
             stmt = delete(UserSession).where(UserSession.id.in_(evicted_ids))
             await self.session.execute(stmt)
+            await _maybe_await(self.session.flush())
 
         return sessions_to_evict
 
@@ -143,4 +144,4 @@ class SessionRepository:
                 user_session.ip_address = ip_address
             if expires_at:
                 user_session.expires_at = expires_at
-            await self.session.flush()
+            await _maybe_await(self.session.flush())

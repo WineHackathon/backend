@@ -57,7 +57,7 @@ class CellarRepository:
         wine_id: uuid.UUID,
         status: CellarStatus | str,
     ) -> UserCellar | None:
-        """Поиск позиции по пользователю, вину и статусу."""
+        """Поиск позиции по пользователю, вину и статусу с подгрузкой карточки вина."""
         status_val = status.value if isinstance(status, CellarStatus) else status
         stmt = (
             select(UserCellar)
@@ -66,6 +66,7 @@ class CellarRepository:
                 UserCellar.wine_id == wine_id,
                 UserCellar.status == status_val,
             )
+            .options(selectinload(UserCellar.wine))
         )
         res = await self.session.execute(stmt)
         return res.scalar_one_or_none()

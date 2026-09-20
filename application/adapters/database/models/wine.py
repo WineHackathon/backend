@@ -4,6 +4,7 @@
 import uuid
 from typing import TYPE_CHECKING
 from sqlalchemy import String, Text, Float, Integer, Index, JSON, Enum as SQLEnum
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from application.entities.wine_categories import WineCategory, SugarType
@@ -24,7 +25,6 @@ class Wine(Base, UUIDMixin, TimestampMixin):
     slug: Mapped[str] = mapped_column(
         String(255),
         unique=True,
-        index=True,
         nullable=False,
         comment="Уникальный слаг вина для чекера и ссылок",
     )
@@ -47,15 +47,14 @@ class Wine(Base, UUIDMixin, TimestampMixin):
     )
     region: Mapped[str | None] = mapped_column(
         String(255),
-        index=True,
         nullable=True,
         comment="Винодельческий регион (Крым, Кубань, Долина Дона и др.)",
     )
     grape_varieties: Mapped[list[str]] = mapped_column(
-        JSON,
+        JSON().with_variant(JSONB, "postgresql"),
         default=list,
         nullable=False,
-        comment="Список сортов винограда",
+        comment="Список сортов винограда (JSONB)",
     )
     description: Mapped[str | None] = mapped_column(
         Text,
@@ -70,7 +69,6 @@ class Wine(Base, UUIDMixin, TimestampMixin):
     )
     roskachestvo_score: Mapped[float | None] = mapped_column(
         Float,
-        index=True,
         nullable=True,
         comment="Оценка качества «Винного гида России» Роскачества",
     )
@@ -124,16 +122,16 @@ class Wine(Base, UUIDMixin, TimestampMixin):
         comment="Выдержка в дубе по шкале от 1.0 (без дуба/сталь) до 5.0 (мощный дуб)",
     )
     aroma_tags: Mapped[list[str]] = mapped_column(
-        JSON,
+        JSON().with_variant(JSONB, "postgresql"),
         default=list,
         nullable=False,
-        comment="Теги ароматического профиля (вишня, черная смородина, дуб, ваниль и др.)",
+        comment="Теги ароматического профиля (JSONB)",
     )
     flavor_tags: Mapped[list[str]] = mapped_column(
-        JSON,
+        JSON().with_variant(JSONB, "postgresql"),
         default=list,
         nullable=False,
-        comment="Теги вкусового профиля (слива, табак, минералы, цитрус и др.)",
+        comment="Теги вкусового профиля (JSONB)",
     )
     derived_attributes_confidence: Mapped[float | None] = mapped_column(
         Float,

@@ -4,20 +4,16 @@
 """
 import uuid
 import logging
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.adapters.database.db_session import get_session
-from application.adapters.database.models.scan_history import UserScanHistory, ScanStatus
-from application.adapters.database.repositories.scan_repo import ScanRepository
-from application.adapters.database.transaction_manager import TransactionManager
 from application.dto.scan import ScanResultDTO
-from application.exceptions.domain_exceptions import WineNotFound
-from application.services.catalog_service import CatalogService
+from application.services.scan_service import ScanService
 from backend.app.config import settings
 from backend.app.dependencies import get_optional_user_id, get_rate_limiter, get_ml_dispatcher
-from backend.app.services.rate_limiter import ScanRateLimiter
-from backend.app.services.ml_dispatcher import MLDispatcher
+from application.adapters.redis.rate_limiter import ScanRateLimiter
+from application.adapters.ml.ml_dispatcher import MLDispatcher
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +36,10 @@ async def scan_wine_label(
     2. Для неавторизованных: проверка фингерпринта и IP (максимум 5 бесплатных сканирований).
     3. При превышении квоты возвращает требование регистрации (registration_required: true).
     4. Распознает вино через ML-слой, подтягивает карточку из каталога.
-    5. Сохраняет историю сканирования в базу данных.
+    5. Сохраняет историю сканирования через ScanService.
     """
     x_device_fingerprint = device_fingerprint or request.headers.get("x-device-fingerprint")
+
     # Валидация формата файла
     allowed_types = {"image/jpeg", "image/png", "image/webp"}
     if image.content_type and image.content_type not in allowed_types:
@@ -86,35 +83,18 @@ async def scan_wine_label(
     image_id = str(uuid.uuid4())
     predicted_slug, confidence, latency_ms = await ml_dispatcher.predict(image_bytes, image_id=image_id)
 
-    # 3. Поиск карточки вина в каталоге
-    wine_dto = None
-    if predicted_slug:
-        catalog_service = CatalogService(session)
-        try:
-            wine_dto = await catalog_service.get_by_slug(predicted_slug)
-        except WineNotFound:
-            logger.info(f"Вино со слагом {predicted_slug} не найдено в каталоге")
-            wine_dto = None
-        except Exception as exc:
-            logger.warning(f"Ошибка при получении карточки вина {predicted_slug}: {exc}")
-            wine_dto = None
-
-    # 4. Сохранение записи в историю сканирований (UserScanHistory)
-    scan_repo = ScanRepository(session)
-    tm = TransactionManager(session)
-    scan_record = UserScanHistory(
-        user_id=user_id,
+    # 3. Делегирование в ScanService (поиск карточки и сохранение истории)
+    scan_service = ScanService(session)
+    wine_dto = await scan_service.get_wine_by_slug_safe(predicted_slug)
+    await scan_service.record_scan(
         image_id=image_id,
-        image_s3_key=f"scans/{image_id}.jpg",
         predicted_slug=predicted_slug,
         confidence=confidence,
         latency_ms=latency_ms,
+        user_id=user_id,
         device_fingerprint=x_device_fingerprint,
         ip_address=client_ip,
-        status=ScanStatus.SUCCESS if predicted_slug else ScanStatus.FAILED,
     )
-    async with tm:
-        await scan_repo.save(scan_record)
 
     return ScanResultDTO(
         image_id=image_id,

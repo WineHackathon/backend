@@ -35,7 +35,6 @@ class WineFoodPairing(Base, UUIDMixin, TimestampMixin):
     wine_id: Mapped[uuid.UUID] = mapped_column(
         GUID,
         ForeignKey("wines.id", ondelete="CASCADE"),
-        index=True,
         nullable=False,
         comment="Идентификатор связанного вина",
     )
@@ -60,4 +59,5 @@ class WineFoodPairing(Base, UUIDMixin, TimestampMixin):
 
     __table_args__ = (
         Index("idx_pairing_wine_category", "wine_id", "food_category"),
+        Index("idx_pairing_category_wine", "food_category", "wine_id"),
     )

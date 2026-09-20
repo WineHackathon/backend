@@ -2,6 +2,7 @@ import enum
 import uuid
 from typing import TYPE_CHECKING
 from sqlalchemy import String, Boolean, JSON, Enum as SQLEnum
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, UUIDMixin, TimestampMixin
@@ -33,7 +34,6 @@ class User(Base, UUIDMixin, TimestampMixin):
     email: Mapped[str] = mapped_column(
         String(255),
         unique=True,
-        index=True,
         nullable=False,
         comment="Email пользователя для входа и уведомлений",
     )
@@ -45,7 +45,6 @@ class User(Base, UUIDMixin, TimestampMixin):
     yandex_id: Mapped[str | None] = mapped_column(
         String(100),
         unique=True,
-        index=True,
         nullable=True,
         comment="Уникальный идентификатор Яндекс ID",
     )
@@ -88,10 +87,10 @@ class User(Base, UUIDMixin, TimestampMixin):
     # Вкусовой профиль пользователя (Taste Profile)
     # =========================================================================
     taste_profile: Mapped[dict] = mapped_column(
-        JSON,
+        JSON().with_variant(JSONB, "postgresql"),
         default=dict,
         nullable=False,
-        comment="Агрегированные вкусовые предпочтения пользователя (JSON)",
+        comment="Агрегированные вкусовые предпочтения пользователя (JSONB)",
     )
 
     # Связи

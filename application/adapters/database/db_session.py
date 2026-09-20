@@ -1,10 +1,14 @@
 """
 Модуль подключения к базе данных и управления пулом асинхронных сессий.
 """
-import os
 from typing import AsyncGenerator
 from pydantic_settings import BaseSettings
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker, AsyncEngine
+from sqlalchemy.ext.asyncio import (
+    create_async_engine,
+    AsyncSession,
+    async_sessionmaker,
+    AsyncEngine,
+)
 
 from application.adapters.database.models import Base
 
@@ -23,7 +27,10 @@ class DatabaseSettings(BaseSettings):
     def get_url(self) -> str:
         if self.database_url:
             return self.database_url
-        return f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        return (
+            f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}@"
+            f"{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        )
 
 
 db_settings = DatabaseSettings()
@@ -50,24 +57,33 @@ def get_database_url(
     return db_settings.get_url()
 
 
-async def global_init_db(database_url: str | None = None) -> None:
-    """Глобальная инициализация асинхронного движка SQLAlchemy и фабрики сессий."""
-    global _engine, _sessionmaker
+def _setup_engine(url: str) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
+    """Единая фабрика инициализации движка и сессий (DRY, защита от расхождений)."""
+    engine_kwargs = {
+        "echo": False,
+        "pool_pre_ping": True,
+    }
+    # Параметры пула QueuePool только для сетевых СУБД (PostgreSQL)
+    if not url.startswith("sqlite"):
+        engine_kwargs["pool_size"] = 15
+        engine_kwargs["max_overflow"] = 10
 
-    url = database_url or get_database_url()
-    _engine = create_async_engine(
-        url,
-        echo=False,
-        pool_pre_ping=True,
-        pool_size=15,
-        max_overflow=10,
-    )
-    _sessionmaker = async_sessionmaker(
-        bind=_engine,
+    engine = create_async_engine(url, **engine_kwargs)
+    session_factory = async_sessionmaker(
+        bind=engine,
         autocommit=False,
         autoflush=False,
         expire_on_commit=False,
     )
+    return engine, session_factory
+
+
+async def global_init_db(database_url: str | None = None) -> None:
+    """Глобальная инициализация асинхронного движка SQLAlchemy и миграция схемы."""
+    global _engine, _sessionmaker
+
+    url = database_url or get_database_url()
+    _engine, _sessionmaker = _setup_engine(url)
 
     # Создание всех зарегистрированных таблиц базы данных при инициализации
     async with _engine.begin() as conn:
@@ -75,24 +91,11 @@ async def global_init_db(database_url: str | None = None) -> None:
 
 
 def create_session() -> AsyncSession:
-    """Создание отдельного экземпляра сессии."""
+    """Создание отдельного экземпляра сессии (с ленивой инициализацией при необходимости)."""
     global _sessionmaker, _engine
     if _sessionmaker is None:
-        # Автоматическая ленивая инициализация при отсутствии вызова global_init_db
         url = get_database_url()
-        _engine = create_async_engine(
-            url,
-            echo=False,
-            pool_pre_ping=True,
-            pool_size=15,
-            max_overflow=10,
-        )
-        _sessionmaker = async_sessionmaker(
-            bind=_engine,
-            autocommit=False,
-            autoflush=False,
-            expire_on_commit=False,
-        )
+        _engine, _sessionmaker = _setup_engine(url)
     return _sessionmaker()
 
 
@@ -103,8 +106,9 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def close_db() -> None:
-    """Корректное закрытие пула соединений при остановке сервиса."""
-    global _engine
+    """Корректное закрытие пула соединений и сброс фабрики сессий."""
+    global _engine, _sessionmaker
     if _engine:
         await _engine.dispose()
         _engine = None
+    _sessionmaker = None

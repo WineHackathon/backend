@@ -243,3 +243,243 @@ async def test_auth_service_security_and_tokens():
     assert verify_password(pwd, "pbkdf2_sha256$not_a_number$salt$hash") is False
 
 
+def test_all_dtos_validation_and_serialization():
+    """Комплексный тест валидации и сериализации всех DTO схем."""
+    from application.dto import (
+        UserDTO,
+        TasteProfileDTO,
+        UserPreferenceHistoryDTO,
+        PreferenceSessionCreateDTO,
+        CellarItemDTO,
+        CellarItemCreateDTO,
+        ScanResultDTO,
+        EvaluationResponseDTO,
+        OnboardingAnswerDTO,
+    )
+    from application.dto.wine_intent import WineSearchIntent
+    from application.adapters.database.models.cellar import CellarStatus
+    from datetime import datetime, timezone
+
+    # 1. TasteProfileDTO & UserDTO
+    profile = TasteProfileDTO(
+        preferred_categories=["Красное"],
+        sweetness_pref=1.5,
+        body_pref=4.5,
+        favorite_aromas=["ежевика", "шоколад"],
+    )
+    assert profile.sweetness_pref == 1.5
+    assert "шоколад" in profile.favorite_aromas
+
+    uid = uuid.uuid4()
+    user_dto = UserDTO(
+        id=uid,
+        email="test@user.ru",
+        first_name="Тест",
+        role="admin",
+        taste_profile=profile,
+    )
+    assert user_dto.role == "admin"
+    assert isinstance(user_dto.taste_profile, TasteProfileDTO)
+    assert user_dto.taste_profile.body_pref == 4.5
+
+    # 2. PreferenceSessionCreateDTO с произвольными типами в raw_answers (списки, числа)
+    session_dto = PreferenceSessionCreateDTO(
+        session_id="session-123",
+        raw_answers={"step_1": "Красное", "sweetness": 2.0, "aromas": ["ягоды", "дуб"]},
+        recommended_slugs=["wine-1", "wine-2"],
+    )
+    assert session_dto.raw_answers["sweetness"] == 2.0
+    assert isinstance(session_dto.raw_answers["aromas"], list)
+
+    # 3. CellarItemDTO & CellarItemCreateDTO
+    cellar_create = CellarItemCreateDTO(
+        wine_slug="krasnostop-2020",
+        status=CellarStatus.IN_CELLAR,
+        bottles_count=3,
+        personal_rating=5,
+    )
+    assert cellar_create.bottles_count == 3
+    assert cellar_create.status == CellarStatus.IN_CELLAR
+
+    cellar_dto = CellarItemDTO(
+        id=uuid.uuid4(),
+        user_id=uid,
+        wine_id=uuid.uuid4(),
+        status=CellarStatus.TASTED,
+        bottles_count=1,
+        created_at=datetime.now(timezone.utc),
+    )
+    assert cellar_dto.status == CellarStatus.TASTED
+
+    # 4. ScanResultDTO & EvaluationResponseDTO
+    eval_dto = EvaluationResponseDTO(slug="fanagoria-cru-leront-chardonnay")
+    assert eval_dto.slug == "fanagoria-cru-leront-chardonnay"
+
+    scan_dto = ScanResultDTO(
+        image_id="img_12345",
+        slug="fanagoria-cru-leront-chardonnay",
+        confidence=0.98,
+        latency_ms=120,
+    )
+    assert scan_dto.confidence == 0.98
+
+    # 5. OnboardingAnswerDTO (плоский и вложенный форматы)
+    flat_answer = OnboardingAnswerDTO(
+        step=1,
+        code="category",
+        answer="Белое",
+        answers_history={"q0": "init"},
+    )
+    s, c, a, h = flat_answer.get_parsed_data()
+    assert s == 1 and c == "category" and a == "Белое" and h["q0"] == "init"
+
+    nested_answer = OnboardingAnswerDTO(
+        answer={"step": 2, "code": "sweetness", "answer": "Сухое"},
+        answers_history={"category": "Белое"},
+    )
+    s2, c2, a2, h2 = nested_answer.get_parsed_data()
+    assert s2 == 2 and c2 == "sweetness" and a2 == "Сухое" and h2["category"] == "Белое"
+
+    # 6. WineSearchIntent
+    intent = WineSearchIntent(
+        category="Красное",
+        sugar_type="Сухое",
+        target_body=4.0,
+        target_sweetness=1.0,
+    )
+    assert intent.category == "Красное"
+    assert intent.target_body == 4.0
+
+
+@pytest.mark.asyncio
+async def test_yandex_oauth_adapter_and_device_utils():
+    """Проверка YandexOAuthClient (mock/dev режим) и утилиты parse_device_name."""
+    from application.adapters.oauth.yandex import YandexOAuthClient, YandexUserProfile
+    from application.common.device_utils import parse_device_name
+
+    # 1. Dev/Mock режим OAuth клиента
+    client = YandexOAuthClient()
+    profile = await client.get_user_profile("test_sommelier_user")
+    assert isinstance(profile, YandexUserProfile)
+    assert profile.yandex_id == "yandex_sommelier_user"
+    assert profile.email == "yandex_sommelier_user@yandex.ru"
+    assert profile.first_name == "Яндекс"
+
+    # 2. Утилита распознавания User-Agent
+    ua_mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
+    assert parse_device_name(ua_mac) == "Chrome (macOS)"
+
+    ua_iphone = "Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1"
+    assert parse_device_name(ua_iphone) == "Safari (iPhone)"
+
+    # Явное клиентское имя устройства имеет приоритет
+    assert parse_device_name(ua_mac, client_device="iPad Pro 12.9") == "iPad Pro 12.9"
+    assert parse_device_name(None, None) == "Неизвестное устройство"
+
+
+@pytest.mark.asyncio
+async def test_taste_profile_service_defensive_parsing():
+    """Проверка TasteProfileService на устойчивость к спискам ароматов, числам и категориям."""
+    from application.services.taste_profile_service import TasteProfileService
+    from application.dto.user import PreferenceSessionCreateDTO
+
+    mock_session = AsyncMock()
+    service = TasteProfileService(mock_session)
+
+    uid = uuid.uuid4()
+    mock_user = User(
+        id=uid,
+        email="test@taste.ru",
+        first_name="Тестер",
+        taste_profile={"preferred_categories": ["Белое"], "sweetness_pref": 1.5, "favorite_aromas": ["яблоко"]},
+    )
+    service.user_repo.get_by_id = AsyncMock(return_value=mock_user)
+    service.pref_repo.save = AsyncMock()
+    service.user_repo.update_taste_profile = AsyncMock()
+
+    dto = PreferenceSessionCreateDTO(
+        user_id=uid,
+        session_id="session-defensive-1",
+        raw_answers={
+            "category": ["Красное", "Розовое"],
+            "sweetness": 2.5,  # float вместо строки
+            "body": 4.0,       # float вместо строки
+            "acidity": "яркая свежесть",
+            "oak": 4.5,
+            "aromas": ["вишня", "ваниль", "дуб"],  # list вместо str.replace(...)
+        },
+        recommended_slugs=["wine-1"],
+    )
+
+    profile = await service.record_preferences_and_update_profile(dto)
+    assert profile is not None
+    assert "Белое" in profile.preferred_categories
+    assert "Красное" in profile.preferred_categories
+    assert "Розовое" in profile.preferred_categories
+    assert "вишня" in profile.favorite_aromas
+    assert "ваниль" in profile.favorite_aromas
+    assert "яблоко" in profile.favorite_aromas
+    assert 1.0 <= profile.sweetness_pref <= 5.0
+    assert 1.0 <= profile.body_pref <= 5.0
+
+
+@pytest.mark.asyncio
+async def test_scan_service_record_and_lookup():
+    """Проверка работы ScanService: сохранение истории и безопасный поиск вина."""
+    from application.services.scan_service import ScanService
+    from application.adapters.database.models.scan_history import ScanStatus
+
+    mock_session = AsyncMock()
+    service = ScanService(mock_session)
+    service.scan_repo.save = AsyncMock()
+
+    uid = uuid.uuid4()
+    scan_record = await service.record_scan(
+        image_id="img-scan-999",
+        predicted_slug="fanagoria-cru-leront",
+        confidence=0.96,
+        latency_ms=180,
+        user_id=uid,
+        device_fingerprint="fp-device-123",
+        ip_address="192.168.1.1",
+    )
+    assert scan_record.image_id == "img-scan-999"
+    assert scan_record.predicted_slug == "fanagoria-cru-leront"
+    assert scan_record.status == ScanStatus.SUCCESS
+    service.scan_repo.save.assert_awaited_once()
+
+    # Поиск по несуществующему вину не должен падать
+    service.catalog_service.get_by_slug = AsyncMock(return_value=None)
+    res = await service.get_wine_by_slug_safe("non-existent-wine")
+    assert res is None
+
+
+@pytest.mark.asyncio
+async def test_ml_and_redis_adapters():
+    """Проверка работы MLDispatcher и ScanRateLimiter в слое application/adapters/."""
+    from application.adapters.ml.ml_dispatcher import MLDispatcher
+    from application.adapters.redis.rate_limiter import ScanRateLimiter
+
+    # 1. MLDispatcher в автономном/mock режиме
+    dispatcher = MLDispatcher(redis_client=None, mock_mode=True)
+    slug, conf, latency = await dispatcher.predict(b"dummy_bytes")
+    assert slug is not None
+    assert conf == 0.94
+    assert latency >= 0
+
+    # 2. ScanRateLimiter без Redis (graceful fallback)
+    limiter = ScanRateLimiter(redis_client=None, limit=5, ttl=3600)
+    allowed, remaining = await limiter.check_and_increment(fingerprint="fp_test")
+    assert allowed is True
+    assert remaining == 5
+
+    # 3. ScanRateLimiter с моком Redis
+    mock_redis = AsyncMock()
+    mock_redis.incr = AsyncMock(return_value=1)
+    mock_redis.expire = AsyncMock(return_value=True)
+    limiter_redis = ScanRateLimiter(redis_client=mock_redis, limit=5, ttl=3600)
+    allowed, remaining = await limiter_redis.check_and_increment(fingerprint="fp_test_2")
+    assert allowed is True
+    assert remaining == 4
+    mock_redis.incr.assert_awaited_once_with("anon:scan:fp_test_2")
+    mock_redis.expire.assert_awaited_once_with("anon:scan:fp_test_2", 3600)

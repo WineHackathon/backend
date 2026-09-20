@@ -3,7 +3,7 @@ DTO схемы для аутентификации и авторизации.
 """
 import uuid
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from application.dto.user import UserDTO
 
@@ -15,6 +15,8 @@ class TokenPayloadDTO(BaseModel):
     type: str  # "access" | "refresh"
     is_admin: bool = False
     session_id: uuid.UUID | None = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RefreshTokenRequestDTO(BaseModel):
@@ -47,6 +49,8 @@ class TokenPairDTO(BaseModel):
     token_type: str = "Bearer"
     expires_in: int
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class YandexAuthDTO(BaseModel):
     """Запрос авторизации через OAuth Яндекс ID."""
@@ -60,6 +64,8 @@ class AuthResponseDTO(BaseModel):
     user: UserDTO
     tokens: TokenPairDTO
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class LogoutRequestDTO(BaseModel):
     """Запрос на выход из системы с отзывом токенов."""
@@ -71,4 +77,4 @@ class LogoutResponseDTO(BaseModel):
     status: str = "ok"
     message: str = "Успешный выход из системы"
 
-
+    model_config = ConfigDict(from_attributes=True)

@@ -3,7 +3,7 @@
 """
 import uuid
 from typing import Sequence
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.adapters.database.models.preference_history import UserPreferenceHistory
@@ -35,3 +35,23 @@ class PreferenceRepository:
         )
         res = await self.session.execute(stmt)
         return res.scalars().all()
+
+    async def get_by_session_id(self, session_id: str) -> UserPreferenceHistory | None:
+        """Получение записи предпочтений по идентификатору сессии диалога."""
+        stmt = select(UserPreferenceHistory).where(UserPreferenceHistory.session_id == session_id)
+        res = await self.session.execute(stmt)
+        return res.scalar_one_or_none()
+
+    async def link_guest_preferences_to_user(self, session_id: str, user_id: uuid.UUID) -> int:
+        """Привязка гостевой сессии предпочтений к зарегистрированному пользователю."""
+        stmt = (
+            update(UserPreferenceHistory)
+            .where(
+                UserPreferenceHistory.session_id == session_id,
+                UserPreferenceHistory.user_id.is_(None),
+            )
+            .values(user_id=user_id)
+        )
+        res = await self.session.execute(stmt)
+        await self.session.flush()
+        return res.rowcount or 0

@@ -9,10 +9,10 @@ import redis.asyncio as redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.adapters.database.db_session import get_session
-from application.services.auth_service import TokenService
+from application.adapters.ml.ml_dispatcher import MLDispatcher
+from application.adapters.redis.rate_limiter import ScanRateLimiter
+from application.services.token_service import TokenService
 from backend.app.config import settings
-from backend.app.services.rate_limiter import ScanRateLimiter
-from backend.app.services.ml_dispatcher import MLDispatcher
 
 security = HTTPBearer(auto_error=False)
 

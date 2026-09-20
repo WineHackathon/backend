@@ -50,7 +50,7 @@ def test_eval_predict_endpoint_success(client: TestClient):
     fake_image = io.BytesIO(b"\xff\xd8\xff\xe0" + b"\x00" * 100)
     fake_image.name = "wine.jpg"
 
-    with patch("backend.app.services.ml_dispatcher.MLDispatcher.predict", new_callable=AsyncMock) as mock_predict:
+    with patch("application.adapters.ml.ml_dispatcher.MLDispatcher.predict", new_callable=AsyncMock) as mock_predict:
         mock_predict.return_value = ("shiraz-cru-2022", 0.96, 120)
 
         response = client.post(
@@ -69,7 +69,7 @@ def test_eval_predict_endpoint_fallback_null(client: TestClient):
     fake_image = io.BytesIO(b"\xff\xd8\xff\xe0" + b"\x00" * 100)
     fake_image.name = "wine.jpg"
 
-    with patch("backend.app.services.ml_dispatcher.MLDispatcher.predict", new_callable=AsyncMock) as mock_predict:
+    with patch("application.adapters.ml.ml_dispatcher.MLDispatcher.predict", new_callable=AsyncMock) as mock_predict:
         mock_predict.return_value = (None, 0.20, 95)
 
         response = client.post(
@@ -90,8 +90,8 @@ def test_anonymous_scan_rate_limiting(client: TestClient):
     fake_image_bytes = b"\xff\xd8\xff\xe0" + b"\x00" * 100
     fingerprint = "test-device-uuid-12345"
 
-    with patch("backend.app.services.rate_limiter.ScanRateLimiter.check_and_increment", new_callable=AsyncMock) as mock_rate_limit, \
-         patch("backend.app.services.ml_dispatcher.MLDispatcher.predict", new_callable=AsyncMock) as mock_predict, \
+    with patch("application.adapters.redis.rate_limiter.ScanRateLimiter.check_and_increment", new_callable=AsyncMock) as mock_rate_limit, \
+         patch("application.adapters.ml.ml_dispatcher.MLDispatcher.predict", new_callable=AsyncMock) as mock_predict, \
          patch("application.services.catalog_service.CatalogService.get_by_slug", new_callable=AsyncMock) as mock_get_slug:
 
         mock_predict.return_value = ("fanagoria-2020", 0.94, 150)
@@ -345,7 +345,7 @@ def test_register_with_device_fingerprint(client: TestClient):
 @pytest.mark.asyncio
 async def test_ml_dispatcher_mock_mode():
     """Проверка работы MLDispatcher в режиме mock_mode при отсутствии внешнего воркера."""
-    from backend.app.services.ml_dispatcher import MLDispatcher
+    from application.adapters.ml.ml_dispatcher import MLDispatcher
     dispatcher = MLDispatcher(redis_client=None)
 
     slug, confidence, latency_ms = await dispatcher.predict(b"fake_image_bytes")

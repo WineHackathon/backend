@@ -3,7 +3,7 @@ DTO схемы для каталога вин и вкусовой матрицы
 """
 import uuid
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TasteMatrixDTO(BaseModel):
@@ -16,6 +16,8 @@ class TasteMatrixDTO(BaseModel):
     flavor_tags: list[str] = Field(default_factory=list, description="Список тегов вкусового профиля")
     derived_attributes_confidence: float | None = Field(default=1.0, ge=0.0, le=1.0, description="Уверенность извлечения")
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class FoodPairingDTO(BaseModel):
     """Гастрономическое сочетание."""
@@ -24,7 +26,7 @@ class FoodPairingDTO(BaseModel):
     dish_name: str
     recommendation_reason: str | None = None
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
 
 
 class WineDTO(BaseModel):
@@ -49,7 +51,7 @@ class WineDTO(BaseModel):
     acidity: float | None = None
     oak: float | None = None
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
 
 
 class WineDetailDTO(WineDTO):
@@ -62,7 +64,7 @@ class WineDetailDTO(WineDTO):
     pairings: list[FoodPairingDTO] = Field(default_factory=list)
     created_at: datetime | None = None
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
 
 
 class WineFilterDTO(BaseModel):
@@ -94,3 +96,4 @@ class PaginatedWinesDTO(BaseModel):
     limit: int
     items: list[WineDTO]
 
+    model_config = ConfigDict(from_attributes=True)

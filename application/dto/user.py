@@ -3,7 +3,8 @@ DTO схемы для пользователей и вкусового проф�
 """
 import uuid
 from datetime import datetime
-from pydantic import BaseModel, Field
+from typing import Any
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TasteProfileDTO(BaseModel):
@@ -16,6 +17,8 @@ class TasteProfileDTO(BaseModel):
     favorite_aromas: list[str] = Field(default_factory=list, description="Любимые ноты аромата")
     disliked_aromas: list[str] = Field(default_factory=list, description="Нежелательные ноты аромата")
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class UserDTO(BaseModel):
     """Данные пользователя платформы."""
@@ -26,20 +29,21 @@ class UserDTO(BaseModel):
     avatar_url: str | None = None
     is_active: bool = True
     is_admin: bool = False
-    taste_profile: dict = Field(default_factory=dict)
+    role: str = "user"
+    taste_profile: TasteProfileDTO | dict[str, Any] = Field(default_factory=TasteProfileDTO)
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserPreferenceHistoryDTO(BaseModel):
     """Запись истории предпочтений пользователя (сессии сомелье)."""
     id: uuid.UUID
     session_id: str
-    raw_answers: dict = Field(default_factory=dict)
+    raw_answers: dict[str, Any] = Field(default_factory=dict)
     recommended_slugs: list[str] = Field(default_factory=list)
     created_at: datetime
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserCreateDTO(BaseModel):
@@ -50,13 +54,13 @@ class UserCreateDTO(BaseModel):
     first_name: str = "Пользователь"
     last_name: str | None = None
     avatar_url: str | None = None
-    taste_profile: dict = Field(default_factory=dict)
+    role: str = "user"
+    taste_profile: dict[str, Any] = Field(default_factory=dict)
 
 
 class PreferenceSessionCreateDTO(BaseModel):
     """Данные сессии сомелье для сохранения сырых ответов и обновления вкусового профиля."""
     user_id: uuid.UUID | None = None
     session_id: str
-    raw_answers: dict[str, str] = Field(default_factory=dict)
+    raw_answers: dict[str, Any] = Field(default_factory=dict)
     recommended_slugs: list[str] = Field(default_factory=list)
-

@@ -13,6 +13,7 @@ class GUID(TypeDecorator):
     """
     Кроссплатформенный тип для UUID (PostgreSQL использует native UUID,
     SQLite использует строковое представление CHAR(36)).
+    Автоматически нормализует строки в uuid.UUID для драйвера asyncpg.
     """
     impl = CHAR
     cache_ok = True
@@ -26,19 +27,30 @@ class GUID(TypeDecorator):
     def process_bind_param(self, value, dialect):
         if value is None:
             return value
-        elif dialect.name == "postgresql":
-            return value
+        if dialect.name == "postgresql":
+            if isinstance(value, uuid.UUID):
+                return value
+            try:
+                return uuid.UUID(str(value))
+            except (ValueError, AttributeError, TypeError):
+                return value
         else:
             if isinstance(value, uuid.UUID):
                 return str(value)
-            return str(uuid.UUID(value))
+            try:
+                return str(uuid.UUID(str(value)))
+            except (ValueError, AttributeError, TypeError):
+                return str(value)
 
     def process_result_value(self, value, dialect):
         if value is None:
             return value
         if isinstance(value, uuid.UUID):
             return value
-        return uuid.UUID(value)
+        try:
+            return uuid.UUID(str(value))
+        except (ValueError, AttributeError, TypeError):
+            return value
 
 
 class Base(DeclarativeBase):
@@ -71,6 +83,7 @@ class TimestampMixin:
         DateTime(timezone=True),
         server_default=func.now(),
         onupdate=lambda: datetime.now(timezone.utc),
+        server_onupdate=func.now(),
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
         sort_order=101,

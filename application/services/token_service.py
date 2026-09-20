@@ -5,10 +5,7 @@ import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
-try:
-    import jwt
-except ImportError:
-    jwt = None
+import jwt
 
 from application.dto.auth import TokenPairDTO, TokenPayloadDTO
 from application.exceptions.domain_exceptions import AuthenticationError

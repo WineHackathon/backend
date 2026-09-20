@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import String, DateTime, ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .base import Base, UUIDMixin, TimestampMixin
+from .base import Base, UUIDMixin, TimestampMixin, GUID
 
 if TYPE_CHECKING:
     from .user import User
@@ -19,15 +19,14 @@ class UserSession(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "user_sessions"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
+        GUID,
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
         comment="ID пользователя-владельца сессии",
     )
     refresh_token_hash: Mapped[str] = mapped_column(
         String(64),
         unique=True,
-        index=True,
         nullable=False,
         comment="SHA-256 хэш текущего refresh токена сессии",
     )
