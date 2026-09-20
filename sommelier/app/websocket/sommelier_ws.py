@@ -117,7 +117,7 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
             # 1. Свободный диалог с AI-Копайлотом (type: "message" или "chat")
             # -----------------------------------------------------------------
             if msg_type in ("message", "chat"):
-                user_text = (data.get("content") or data.get("message") or "").strip()
+                user_text = (data.get("content") or data.get("message") or data.get("text") or "").strip()
                 if not user_text:
                     continue
 
@@ -220,12 +220,16 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
             # 2. Интерактивный 5-вопросный онбординг (type: "answer")
             # -----------------------------------------------------------------
             elif msg_type == "answer":
-                step = data.get("step", current_step)
+                step = int(data.get("step", current_step))
                 code = data.get("code")
-                answer_val = data.get("answer")
+                answer_val = data.get("answer") or data.get("text") or data.get("value")
+
+                if not code:
+                    step_codes = {1: "category", 2: "sweetness", 3: "body", 4: "acidity", 5: "aromas"}
+                    code = step_codes.get(step, f"step_{step}")
 
                 if code and answer_val:
-                    answers[code] = answer_val
+                    answers[code] = str(answer_val)
 
                 if step < 5:
                     current_step = step + 1
