@@ -121,7 +121,7 @@ async def domain_exception_handler(request: Request, exc: DomainException):
     return JSONResponse(status_code=400, content={"detail": exc.message})
 
 
-@app.get("/health", tags=["Health"])
+@app.get("/health", tags=["Состояние сервиса"], summary="Проверка работоспособности сервиса (healthcheck)")
 async def health(request: Request):
     """
     Глубокий healthcheck состояния сервиса и инфраструктурных зависимостей.

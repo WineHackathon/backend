@@ -20,19 +20,19 @@ from backend.app.dependencies import get_optional_user_id
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/sommelier", tags=["Digital Sommelier"])
+router = APIRouter(prefix="/api/v1/sommelier", tags=["Цифровой сомелье"])
 
 onboarding_service = SommelierOnboardingService()
 ONBOARDING_QUESTIONS = SommelierOnboardingService.BASELINE_QUESTIONS
 
 
-@router.get("/onboarding/questions", response_model=list[OnboardingQuestionDTO], summary="Get 5 baseline onboarding questions")
+@router.get("/onboarding/questions", response_model=list[OnboardingQuestionDTO], summary="Получить 5 базовых вопросов онбординга")
 async def get_onboarding_questions():
     """Получение стартовых 5 вопросов для диалога с сомелье."""
     return ONBOARDING_QUESTIONS
 
 
-@router.post("/onboarding/answer", response_model=OnboardingStateDTO, summary="Submit onboarding answer and get next question or candidates")
+@router.post("/onboarding/answer", response_model=OnboardingStateDTO, summary="Отправить ответ на вопрос сомелье и получить следующий шаг")
 async def submit_onboarding_answer(
     answer: OnboardingAnswerDTO,
     answers_history: dict[str, str] | None = None,
@@ -105,7 +105,7 @@ async def submit_onboarding_answer(
     )
 
 
-@router.post("/chat", response_model=SommelierChatResponseDTO, summary="Chat with AI sommelier")
+@router.post("/chat", response_model=SommelierChatResponseDTO, summary="Диалог с AI-сомелье (чат)")
 async def chat_with_sommelier(
     request: SommelierChatRequestDTO,
     user_id: uuid.UUID | None = Depends(get_optional_user_id),

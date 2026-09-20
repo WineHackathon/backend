@@ -5,10 +5,10 @@ from fastapi import APIRouter
 from application.dto.sommelier import OnboardingQuestionDTO
 from sommelier.app.services.onboarding_service import SommelierOnboardingService
 
-router = APIRouter(prefix="/api/v1/sommelier/onboarding", tags=["Sommelier Onboarding"])
+router = APIRouter(prefix="/api/v1/sommelier/onboarding", tags=["Онбординг сомелье"])
 
 
-@router.get("/questions", response_model=list[OnboardingQuestionDTO], summary="Get baseline questions")
+@router.get("/questions", response_model=list[OnboardingQuestionDTO], summary="Базовые вопросы онбординга")
 async def get_questions():
     """Получение базовых вопросов онбординга."""
     service = SommelierOnboardingService()

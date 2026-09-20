@@ -7,10 +7,10 @@ from application.dto.scan import EvaluationResponseDTO
 from backend.app.dependencies import get_ml_dispatcher
 from backend.app.services.ml_dispatcher import MLDispatcher
 
-router = APIRouter(tags=["Evaluation Harness"])
+router = APIRouter(tags=["Чекер хакатона (Evaluator)"])
 
 
-@router.post("/v1/eval/predict", response_model=EvaluationResponseDTO, summary="Hackathon Evaluator Entrypoint")
+@router.post("/v1/eval/predict", response_model=EvaluationResponseDTO, summary="Точка входа чекера хакатона (предсказание по фото)")
 async def predict_eval(
     image: UploadFile = File(..., description="Фотография этикетки вина"),
     ml_dispatcher: MLDispatcher = Depends(get_ml_dispatcher),

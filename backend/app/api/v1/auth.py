@@ -23,7 +23,7 @@ from application.services.auth_service import AuthService
 from backend.app.config import settings
 from backend.app.dependencies import security, get_redis_client
 
-router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
+router = APIRouter(prefix="/api/v1/auth", tags=["Аутентификация и сессии"])
 
 
 def _extract_request_meta(request: Request, x_device_name: str | None = None) -> tuple[str | None, str | None, str | None]:
@@ -35,7 +35,7 @@ def _extract_request_meta(request: Request, x_device_name: str | None = None) ->
     return ip_address, user_agent, device_name
 
 
-@router.post("/register", response_model=AuthResponseDTO, summary="Register new user")
+@router.post("/register", response_model=AuthResponseDTO, summary="Регистрация нового пользователя")
 async def register(
     request: Request,
     dto: RegisterRequestDTO,
@@ -64,7 +64,7 @@ async def register(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=e.message)
 
 
-@router.post("/login", response_model=AuthResponseDTO, summary="Login with email and password")
+@router.post("/login", response_model=AuthResponseDTO, summary="Вход по email и паролю")
 async def login(
     request: Request,
     dto: LoginRequestDTO,
@@ -92,7 +92,7 @@ async def login(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=e.message)
 
 
-@router.post("/refresh", response_model=AuthResponseDTO, summary="Refresh access token using refresh token")
+@router.post("/refresh", response_model=AuthResponseDTO, summary="Обновление пары токенов (refresh)")
 async def refresh_tokens(
     request: Request,
     dto: RefreshTokenRequestDTO,
@@ -112,7 +112,7 @@ async def refresh_tokens(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=e.message)
 
 
-@router.post("/logout", response_model=LogoutResponseDTO, summary="Logout user and invalidate token")
+@router.post("/logout", response_model=LogoutResponseDTO, summary="Выход из системы (logout)")
 async def logout(
     dto: LogoutRequestDTO | None = None,
     auth: HTTPAuthorizationCredentials | None = Depends(security),
@@ -132,7 +132,7 @@ async def logout(
     return LogoutResponseDTO(status="ok", message="Успешный выход из системы")
 
 
-@router.get("/yandex/url", summary="Get Yandex ID OAuth authorization URL")
+@router.get("/yandex/url", summary="Получить URL для авторизации через Яндекс ID")
 async def get_yandex_auth_url():
     """Получение URL для перенаправления пользователя на авторизацию в Яндекс ID."""
     client_id = settings.yandex_client_id or "dev_yandex_client_id"
@@ -145,7 +145,7 @@ async def get_yandex_auth_url():
     }
 
 
-@router.get("/yandex/callback", response_model=AuthResponseDTO, summary="Handle Yandex ID OAuth redirect callback")
+@router.get("/yandex/callback", response_model=AuthResponseDTO, summary="Обработка redirect callback от Яндекс ID")
 async def yandex_oauth_callback(
     request: Request,
     code: str = Query(..., description="Код авторизации от Яндекса"),
@@ -178,7 +178,7 @@ async def yandex_oauth_callback(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=e.message)
 
 
-@router.post("/yandex", response_model=AuthResponseDTO, summary="Authorize with Yandex ID code from SPA/mobile")
+@router.post("/yandex", response_model=AuthResponseDTO, summary="Авторизация через Яндекс ID по коду (SPA/mobile)")
 async def auth_yandex(
     request: Request,
     dto: YandexAuthDTO,

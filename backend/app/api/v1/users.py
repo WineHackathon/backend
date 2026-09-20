@@ -21,10 +21,10 @@ from application.services.auth_service import AuthService
 from backend.app.dependencies import get_current_user_id, get_current_session_id, get_redis_client
 import redis.asyncio as redis
 
-router = APIRouter(prefix="/api/v1/users", tags=["User Profile & Cellar"])
+router = APIRouter(prefix="/api/v1/users", tags=["Профиль пользователя и сессии"])
 
 
-@router.get("/me", response_model=UserDTO, summary="Get current authenticated user profile")
+@router.get("/me", response_model=UserDTO, summary="Получить профиль текущего пользователя")
 async def get_my_profile(
     user_id: uuid.UUID = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_session),
@@ -34,7 +34,7 @@ async def get_my_profile(
     return await service.get_by_id(user_id)
 
 
-@router.get("/cellar", response_model=list[CellarItemDTO], summary="List wines in user cellar")
+@router.get("/cellar", response_model=list[CellarItemDTO], summary="Список вин в погребе / вишлисте")
 async def get_my_cellar(
     status: CellarStatus | None = Query(None, description="Статус: in_cellar, wishlist, tasted"),
     user_id: uuid.UUID = Depends(get_current_user_id),
@@ -45,7 +45,7 @@ async def get_my_cellar(
     return await service.list_items(user_id, status=status)
 
 
-@router.post("/cellar", response_model=CellarItemDTO, summary="Add wine to cellar or wishlist")
+@router.post("/cellar", response_model=CellarItemDTO, summary="Добавить вино в погреб или вишлист")
 async def add_to_my_cellar(
     dto: CellarItemCreateDTO,
     user_id: uuid.UUID = Depends(get_current_user_id),
@@ -56,7 +56,7 @@ async def add_to_my_cellar(
     return await service.add_item(user_id, dto)
 
 
-@router.delete("/cellar/{item_id}", response_model=CellarDeleteResponseDTO, summary="Remove wine from cellar")
+@router.delete("/cellar/{item_id}", response_model=CellarDeleteResponseDTO, summary="Удалить вино из погреба")
 async def remove_from_my_cellar(
     item_id: uuid.UUID,
     user_id: uuid.UUID = Depends(get_current_user_id),
@@ -68,7 +68,7 @@ async def remove_from_my_cellar(
     return CellarDeleteResponseDTO(status="deleted", item_id=item_id)
 
 
-@router.get("/scans", response_model=list[ScanHistoryItemDTO], summary="Get user scan history")
+@router.get("/scans", response_model=list[ScanHistoryItemDTO], summary="История сканирований пользователя")
 async def get_my_scans(
     limit: int = Query(20, ge=1, le=100),
     user_id: uuid.UUID = Depends(get_current_user_id),
@@ -79,7 +79,7 @@ async def get_my_scans(
     return await service.get_user_scans(user_id, limit=limit)
 
 
-@router.get("/preferences", response_model=list[UserPreferenceHistoryDTO], summary="Get user sommelier preference history")
+@router.get("/preferences", response_model=list[UserPreferenceHistoryDTO], summary="История предпочтений диалогов с сомелье")
 async def get_my_preferences(
     limit: int = Query(10, ge=1, le=50),
     user_id: uuid.UUID = Depends(get_current_user_id),
@@ -94,7 +94,7 @@ async def get_my_preferences(
 # Управление сессиями и активными устройствами (Active Sessions & Devices)
 # =============================================================================
 
-@router.get("/sessions", response_model=list[UserSessionDTO], summary="List active devices/sessions of current user")
+@router.get("/sessions", response_model=list[UserSessionDTO], summary="Список активных устройств (сессий) пользователя")
 async def list_my_sessions(
     user_id: uuid.UUID = Depends(get_current_user_id),
     current_session_id: uuid.UUID | None = Depends(get_current_session_id),
@@ -108,7 +108,7 @@ async def list_my_sessions(
     return await auth_service.list_user_sessions(user_id, current_session_id=current_session_id)
 
 
-@router.delete("/sessions/{session_id}", response_model=RevokeSessionResponseDTO, summary="Revoke a specific device session")
+@router.delete("/sessions/{session_id}", response_model=RevokeSessionResponseDTO, summary="Завершить конкретную сессию устройства")
 async def revoke_my_session(
     session_id: uuid.UUID,
     user_id: uuid.UUID = Depends(get_current_user_id),
@@ -131,7 +131,7 @@ async def revoke_my_session(
     )
 
 
-@router.delete("/sessions", response_model=RevokeAllSessionsResponseDTO, summary="Revoke all other device sessions")
+@router.delete("/sessions", response_model=RevokeAllSessionsResponseDTO, summary="Завершить все остальные сессии устройств")
 async def revoke_all_my_other_sessions(
     user_id: uuid.UUID = Depends(get_current_user_id),
     current_session_id: uuid.UUID | None = Depends(get_current_session_id),

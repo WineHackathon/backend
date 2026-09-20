@@ -21,10 +21,10 @@ from backend.app.services.ml_dispatcher import MLDispatcher
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/ml", tags=["Wine Scanner"])
+router = APIRouter(prefix="/api/v1/ml", tags=["Сканирование этикеток"])
 
 
-@router.post("/scan", response_model=ScanResultDTO, summary="Scan wine bottle for mobile/web app")
+@router.post("/scan", response_model=ScanResultDTO, summary="Сканирование этикетки вина (фото бутылки)")
 async def scan_wine_label(
     request: Request,
     image: UploadFile = File(..., description="Фотография этикетки или бутылки"),

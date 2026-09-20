@@ -11,10 +11,10 @@ from sommelier.app.services.llm_client import SommelierLLMClient
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/sommelier", tags=["Sommelier HTTP Chat"])
+router = APIRouter(prefix="/api/v1/sommelier", tags=["Чат с сомелье (HTTP)"])
 
 
-@router.post("/chat", response_model=SommelierChatResponseDTO, summary="Chat with AI Sommelier")
+@router.post("/chat", response_model=SommelierChatResponseDTO, summary="Диалог с AI-сомелье (RAG + LLM)")
 async def chat(request: SommelierChatRequestDTO):
     """Диалог с сомелье с использованием RAG и LLM."""
     rag_service = SommelierRAGService()
