@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import logging
 import uuid
@@ -388,6 +389,14 @@ class AuthService:
         elif session_id:
             await self.session_repo.delete_by_id(session_id)
             await self.session.commit()
+        elif access_token:
+            try:
+                payload = self.decode_token(access_token)
+                if payload.session_id:
+                    await self.session_repo.delete_by_id(payload.session_id)
+                    await self.session.commit()
+            except Exception:
+                pass
 
         tokens_to_blacklist = [t for t in (refresh_token, access_token) if t]
         if not tokens_to_blacklist or not self.redis_client:
