@@ -34,15 +34,22 @@ def get_ml_dispatcher(redis_client: redis.Redis | None = Depends(get_redis_clien
 
 async def get_optional_user_id(
     auth: HTTPAuthorizationCredentials | None = Depends(security),
+    redis_client: redis.Redis | None = Depends(get_redis_client),
 ) -> uuid.UUID | None:
     """
     Получение UUID пользователя из JWT токена, если токен передан.
     Проверяет валидность токена и его тип (строго access, предотвращая Token Type Confusion).
-    Если токен отсутствует — возвращает None (для анонимных пользователей).
+    Проверяет, не был ли токен отозван (в черном списке Redis после logout).
+    Если токен отсутствует или отозван — возвращает None (для анонимных пользователей).
     """
     if not auth:
         return None
     try:
+        if redis_client:
+            is_blacklisted = await redis_client.get(f"token:blacklist:{auth.credentials}")
+            if is_blacklisted:
+                return None
+
         token_service = TokenService()
         payload = token_service.decode_access_token(auth.credentials)
         return payload.sub
@@ -52,12 +59,13 @@ async def get_optional_user_id(
 
 async def get_current_user_id(
     auth: HTTPAuthorizationCredentials | None = Depends(security),
+    redis_client: redis.Redis | None = Depends(get_redis_client),
 ) -> uuid.UUID:
     """
     Строгая проверка аутентификации пользователя.
     Возвращает UUID пользователя или вызывает HTTP 401 Unauthorized.
     """
-    user_id = await get_optional_user_id(auth)
+    user_id = await get_optional_user_id(auth, redis_client=redis_client)
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -65,3 +73,4 @@ async def get_current_user_id(
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user_id
+

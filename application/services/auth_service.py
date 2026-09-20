@@ -1,5 +1,7 @@
 import logging
 import uuid
+from datetime import datetime, timezone
+from typing import Any
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +35,7 @@ class AuthService:
         yandex_client_id: str | None = None,
         yandex_client_secret: str | None = None,
         yandex_redirect_uri: str | None = None,
+        redis_client: Any | None = None,
     ) -> None:
         self.session: AsyncSession = session
         self.user_repo: UserRepository = UserRepository(session)
@@ -40,6 +43,7 @@ class AuthService:
         self.yandex_client_id = yandex_client_id
         self.yandex_client_secret = yandex_client_secret
         self.yandex_redirect_uri = yandex_redirect_uri
+        self.redis_client = redis_client
 
     @property
     def access_token_expire_minutes(self) -> int:
@@ -196,7 +200,12 @@ class AuthService:
         return user_dto, tokens
 
     async def refresh_tokens(self, dto: RefreshTokenRequestDTO) -> tuple[UserDTO, TokenPairDTO]:
-        """Обновление пары токенов по валидному refresh-токену."""
+        """Обновление пары токенов по валидному refresh-токену с проверкой отзыва."""
+        if self.redis_client:
+            is_blacklisted = await self.redis_client.get(f"token:blacklist:{dto.refresh_token}")
+            if is_blacklisted:
+                raise AuthenticationError("Данный refresh токен был отозван (logout).")
+
         payload = self.decode_token(dto.refresh_token)
         if payload.type != "refresh":
             raise AuthenticationError("Недействительный тип токена. Ожидается refresh токен.")
@@ -208,4 +217,29 @@ class AuthService:
         user_dto = UserService.to_dto(user)
         tokens = self.create_token_pair(user.id, is_admin=user.is_admin)
         return user_dto, tokens
+
+    async def logout(
+        self,
+        refresh_token: str | None = None,
+        access_token: str | None = None,
+    ) -> None:
+        """
+        Инвалидация токенов пользователя (помещение в blacklist Redis).
+        Гарантирует, что отозванные токены не могут быть использованы повторно.
+        """
+        tokens_to_blacklist = [t for t in (refresh_token, access_token) if t]
+        if not tokens_to_blacklist or not self.redis_client:
+            return
+
+        for token in tokens_to_blacklist:
+            try:
+                payload = self.decode_token(token)
+                now_ts = int(datetime.now(timezone.utc).timestamp())
+                ttl = max(payload.exp - now_ts, 60)
+                await self.redis_client.setex(f"token:blacklist:{token}", ttl, "1")
+            except Exception as e:
+                logger.warning(f"Не удалось распарсить токен при logout: {e}")
+                # Фолбэк TTL: 24 часа
+                await self.redis_client.setex(f"token:blacklist:{token}", 86400, "1")
+
 

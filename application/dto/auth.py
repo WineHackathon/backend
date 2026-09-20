@@ -54,3 +54,15 @@ class AuthResponseDTO(BaseModel):
     user: UserDTO
     tokens: TokenPairDTO
 
+
+class LogoutRequestDTO(BaseModel):
+    """Запрос на выход из системы с отзывом токенов."""
+    refresh_token: str | None = Field(default=None, description="Refresh токен для отзыва")
+
+
+class LogoutResponseDTO(BaseModel):
+    """Ответ на успешный выход из системы."""
+    status: str = "ok"
+    message: str = "Успешный выход из системы"
+
+

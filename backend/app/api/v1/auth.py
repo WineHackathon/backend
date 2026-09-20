@@ -2,6 +2,8 @@
 Эндпоинты аутентификации и регистрации (/api/v1/auth).
 """
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi.security import HTTPAuthorizationCredentials
+import redis.asyncio as redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.adapters.database.db_session import get_session
@@ -12,11 +14,14 @@ from application.dto.auth import (
     AuthResponseDTO,
     RefreshTokenRequestDTO,
     YandexAuthDTO,
+    LogoutRequestDTO,
+    LogoutResponseDTO,
 )
 from application.dto.user import UserDTO
 from application.exceptions.domain_exceptions import AuthenticationError, UserAlreadyExists
 from application.services.auth_service import AuthService
 from backend.app.config import settings
+from backend.app.dependencies import security, get_redis_client
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
 
@@ -62,10 +67,11 @@ async def login(
 @router.post("/refresh", response_model=AuthResponseDTO, summary="Refresh access token using refresh token")
 async def refresh_tokens(
     dto: RefreshTokenRequestDTO,
+    redis_client: redis.Redis | None = Depends(get_redis_client),
     session: AsyncSession = Depends(get_session),
 ):
-    """Обновление пары токенов по валидному refresh-токену."""
-    service = AuthService(session)
+    """Обновление пары токенов по валидному refresh-токену с проверкой отзыва (blacklist)."""
+    service = AuthService(session, redis_client=redis_client)
     try:
         user_dto, tokens = await service.refresh_tokens(dto)
         return AuthResponseDTO(
@@ -74,6 +80,28 @@ async def refresh_tokens(
         )
     except AuthenticationError as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=e.message)
+
+
+@router.post("/logout", response_model=LogoutResponseDTO, summary="Logout user and invalidate token")
+async def logout(
+    dto: LogoutRequestDTO | None = None,
+    auth: HTTPAuthorizationCredentials | None = Depends(security),
+    redis_client: redis.Redis | None = Depends(get_redis_client),
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Выход из системы (Logout):
+    - Принимает опциональный refresh_token (в теле запроса) и/или access_token (в заголовке Authorization).
+    - Если Redis доступен, отзывает токены (помещает в blacklist) на время их оставшейся жизни.
+    - Возвращает подтверждение успешного выхода.
+    """
+    service = AuthService(session, redis_client=redis_client)
+    await service.logout(
+        refresh_token=dto.refresh_token if dto else None,
+        access_token=auth.credentials if auth else None,
+    )
+    return LogoutResponseDTO(status="ok", message="Успешный выход из системы")
+
 
 
 @router.get("/yandex/url", summary="Get Yandex ID OAuth authorization URL")

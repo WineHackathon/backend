@@ -354,5 +354,35 @@ async def test_ml_dispatcher_mock_mode():
     assert latency_ms >= 0
 
 
+def test_logout_flow(client: TestClient):
+    """Проверка эндпоинта /logout с отзывом токенов через Redis blacklist."""
+    from application.services.auth_service import TokenService
+    token_service = TokenService()
+    user_id = uuid.uuid4()
+    tokens = token_service.create_token_pair(user_id)
+
+    mock_redis = AsyncMock()
+    mock_redis.setex = AsyncMock()
+    from backend.app.dependencies import get_redis_client
+    app.dependency_overrides[get_redis_client] = lambda: mock_redis
+
+    try:
+        resp = client.post(
+            "/api/v1/auth/logout",
+            json={"refresh_token": tokens.refresh_token},
+            headers={"Authorization": f"Bearer {tokens.access_token}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert "успешный выход" in data["message"].lower()
+
+        # Проверяем, что оба токена были отправлены в черный список Redis
+        assert mock_redis.setex.call_count == 2
+    finally:
+        app.dependency_overrides.pop(get_redis_client, None)
+
+
+
 
 
