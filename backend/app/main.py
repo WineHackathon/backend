@@ -183,7 +183,7 @@ async def sommelier_websocket_test_page():
 <div class="container">
   <h1>🍷 AI-Сомелье — Живой WebSocket Тестер</h1>
   <div class="auth-box">
-    <input type="text" id="tokenInput" placeholder="Вставьте Access Token (для авторизованного режима)...">
+    <input type="text" id="tokenInput" value="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmMmViMzg3YS1iNGY2LTRjZmQtYjJmMS04ODRlNDdlZDU5YzAiLCJleHAiOjE3ODk5MDQ5MzMsInR5cGUiOiJhY2Nlc3MiLCJpc19hZG1pbiI6ZmFsc2UsInNlc3Npb25faWQiOm51bGx9.z9Fpbc7yvXhwdG2o9BJBa6STHcIh9SCpcJaCEuvJc4M" placeholder="Вставьте Access Token (для авторизованного режима)...">
     <button id="connectBtn" onclick="toggleConnect()">Подключиться</button>
   </div>
   <div class="chat-box" id="chatBox">
@@ -206,15 +206,17 @@ async def sommelier_websocket_test_page():
 </div>
 <script>
   let ws = null;
+  let lastSentTime = null;
   const chatBox = document.getElementById('chatBox');
   const tokenInput = document.getElementById('tokenInput');
   const msgInput = document.getElementById('msgInput');
   const connectBtn = document.getElementById('connectBtn');
 
-  function appendMsg(role, text, candidates = []) {
+  function appendMsg(role, text, candidates = [], latencyMs = null) {
     const div = document.createElement('div');
     div.className = `msg ${role}`;
-    div.innerHTML = `<div>${text}</div>`;
+    const badge = latencyMs !== null ? `<span style="display:inline-block; margin-left:8px; font-size:11px; padding:2px 6px; border-radius:10px; background:#334155; color:#38bdf8;">⏱️ ${latencyMs} ms</span>` : '';
+    div.innerHTML = `<div>${text} ${badge}</div>`;
     if (candidates && candidates.length) {
       const cDiv = document.createElement('div');
       cDiv.className = 'candidates';
@@ -248,25 +250,32 @@ async def sommelier_websocket_test_page():
 
     ws.onmessage = (e) => {
       const data = JSON.parse(e.data);
-      console.log('WS msg:', data);
+      let latencyMs = null;
+      if (lastSentTime) {
+        latencyMs = Math.round(performance.now() - lastSentTime);
+        console.log(`⏱️ [Время ответа сомелье]: ${latencyMs} ms | Тип: ${data.type}`, data);
+      } else {
+        console.log('WS msg:', data);
+      }
+
       if (data.type === 'welcome') {
         appendMsg('assistant', data.message);
         if (data.question) {
           appendMsg('assistant', `<b>Вопрос №${data.question.step}:</b> ${data.question.question}<br><i>Варианты: ${data.question.options.join(', ')}</i>`);
         }
       } else if (data.type === 'message' || data.type === 'chat') {
-        appendMsg('assistant', data.content || data.reply, data.candidates);
+        appendMsg('assistant', data.content || data.reply, data.candidates, latencyMs);
       } else if (data.type === 'answer_ack') {
-        appendMsg('assistant', `✅ Ответ зафиксирован (${data.code}: ${data.answer}).`);
+        appendMsg('assistant', `✅ Ответ зафиксирован (${data.code}: ${data.answer}).`, [], latencyMs);
         if (data.next_question) {
           appendMsg('assistant', `<b>Вопрос №${data.next_question.step}:</b> ${data.next_question.question}<br><i>Варианты: ${data.next_question.options.join(', ')}</i>`);
         }
       } else if (data.type === 'onboarding_complete') {
-        appendMsg('assistant', '🎉 Опросник завершён! Вот подобранные вина по вкусовой матрице:', data.candidates);
+        appendMsg('assistant', '🎉 Опросник завершён! Вот подобранные вина по вкусовой матрице:', data.candidates, latencyMs);
       } else if (data.type === 'auth_success') {
         appendMsg('system', `🔑 ${data.message} (User ID: ${data.user_id})`);
       } else {
-        appendMsg('assistant', data.content || data.reply || JSON.stringify(data), data.candidates);
+        appendMsg('assistant', data.content || data.reply || JSON.stringify(data), data.candidates, latencyMs);
       }
     };
 
@@ -287,6 +296,7 @@ async def sommelier_websocket_test_page():
     const text = msgInput.value.trim();
     if (!text || !ws) return;
     appendMsg('user', text);
+    lastSentTime = performance.now();
     ws.send(JSON.stringify({ type: 'message', content: text }));
     msgInput.value = '';
   }
@@ -295,6 +305,7 @@ async def sommelier_websocket_test_page():
     if (!ws) toggleConnect();
     setTimeout(() => {
       appendMsg('user', text);
+      lastSentTime = performance.now();
       ws.send(JSON.stringify({ type: 'message', content: text }));
     }, 400);
   }
@@ -303,6 +314,7 @@ async def sommelier_websocket_test_page():
     if (!ws) toggleConnect();
     setTimeout(() => {
       appendMsg('user', `Ответ на вопрос №${step} (${code}): ${answer}`);
+      lastSentTime = performance.now();
       ws.send(JSON.stringify({ type: 'answer', step: step, code: code, answer: answer }));
     }, 400);
   }
