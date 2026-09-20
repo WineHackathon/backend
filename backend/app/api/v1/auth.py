@@ -39,15 +39,14 @@ def _extract_request_meta(request: Request, x_device_name: str | None = None) ->
 async def register(
     request: Request,
     dto: RegisterRequestDTO,
-    x_device_fingerprint: str | None = Header(None, alias="X-Device-Fingerprint"),
-    x_device_name: str | None = Header(None, alias="X-Device-Name"),
     session: AsyncSession = Depends(get_session),
 ):
     """Регистрация нового пользователя с получением JWT токенов, созданием сессии устройства и привязкой истории гостевых сканов."""
+    x_device_fingerprint = request.headers.get("x-device-fingerprint")
     if not dto.device_fingerprint and x_device_fingerprint:
         dto.device_fingerprint = x_device_fingerprint
 
-    ip_address, user_agent, device_name = _extract_request_meta(request, x_device_name)
+    ip_address, user_agent, device_name = _extract_request_meta(request)
     service = AuthService(session, max_user_sessions=settings.max_user_sessions)
     try:
         user_dto, tokens = await service.register(
@@ -68,13 +67,12 @@ async def register(
 async def login(
     request: Request,
     dto: LoginRequestDTO,
-    x_device_fingerprint: str | None = Header(None, alias="X-Device-Fingerprint"),
-    x_device_name: str | None = Header(None, alias="X-Device-Name"),
     redis_client: redis.Redis | None = Depends(get_redis_client),
     session: AsyncSession = Depends(get_session),
 ):
     """Вход по email и паролю с созданием сессии устройства и контролем лимита активных устройств (FIFO)."""
-    ip_address, user_agent, device_name = _extract_request_meta(request, x_device_name)
+    ip_address, user_agent, device_name = _extract_request_meta(request)
+    x_device_fingerprint = request.headers.get("x-device-fingerprint")
     service = AuthService(session, redis_client=redis_client, max_user_sessions=settings.max_user_sessions)
     try:
         user_dto, tokens = await service.login(
@@ -149,12 +147,11 @@ async def get_yandex_auth_url():
 async def yandex_oauth_callback(
     request: Request,
     code: str = Query(..., description="Код авторизации от Яндекса"),
-    x_device_fingerprint: str | None = Header(None, alias="X-Device-Fingerprint"),
-    x_device_name: str | None = Header(None, alias="X-Device-Name"),
     session: AsyncSession = Depends(get_session),
 ):
     """Обработка обратного вызова (redirect callback) после авторизации в Яндекс ID."""
-    ip_address, user_agent, device_name = _extract_request_meta(request, x_device_name)
+    ip_address, user_agent, device_name = _extract_request_meta(request)
+    x_device_fingerprint = request.headers.get("x-device-fingerprint")
     service = AuthService(
         session,
         yandex_client_id=settings.yandex_client_id,
@@ -182,12 +179,11 @@ async def yandex_oauth_callback(
 async def auth_yandex(
     request: Request,
     dto: YandexAuthDTO,
-    x_device_fingerprint: str | None = Header(None, alias="X-Device-Fingerprint"),
-    x_device_name: str | None = Header(None, alias="X-Device-Name"),
     session: AsyncSession = Depends(get_session),
 ):
     """Авторизация через Яндекс ID по коду (для мобильных приложений и SPA)."""
-    ip_address, user_agent, device_name = _extract_request_meta(request, x_device_name)
+    ip_address, user_agent, device_name = _extract_request_meta(request)
+    x_device_fingerprint = request.headers.get("x-device-fingerprint")
     service = AuthService(
         session,
         yandex_client_id=settings.yandex_client_id,
