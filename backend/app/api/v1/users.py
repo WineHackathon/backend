@@ -10,9 +10,16 @@ from application.adapters.database.models.cellar import CellarStatus
 from application.dto.user import UserDTO, UserPreferenceHistoryDTO
 from application.dto.cellar import CellarItemDTO, CellarItemCreateDTO, CellarDeleteResponseDTO
 from application.dto.scan import ScanHistoryItemDTO
+from application.dto.session import (
+    UserSessionDTO,
+    RevokeSessionResponseDTO,
+    RevokeAllSessionsResponseDTO,
+)
 from application.services.user_service import UserService
 from application.services.cellar_service import CellarService
-from backend.app.dependencies import get_current_user_id
+from application.services.auth_service import AuthService
+from backend.app.dependencies import get_current_user_id, get_current_session_id, get_redis_client
+import redis.asyncio as redis
 
 router = APIRouter(prefix="/api/v1/users", tags=["User Profile & Cellar"])
 
@@ -81,3 +88,68 @@ async def get_my_preferences(
     """История сырых предпочтений и рекомендаций диалогов с сомелье (сырые данные)."""
     service = UserService(session)
     return await service.get_user_preferences(user_id, limit=limit)
+
+
+# =============================================================================
+# Управление сессиями и активными устройствами (Active Sessions & Devices)
+# =============================================================================
+
+@router.get("/sessions", response_model=list[UserSessionDTO], summary="List active devices/sessions of current user")
+async def list_my_sessions(
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    current_session_id: uuid.UUID | None = Depends(get_current_session_id),
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Список всех активных устройств (сессий) текущего пользователя.
+    Флаг is_current=True указывает на сессию, с которой выполняется запрос.
+    """
+    auth_service = AuthService(session)
+    return await auth_service.list_user_sessions(user_id, current_session_id=current_session_id)
+
+
+@router.delete("/sessions/{session_id}", response_model=RevokeSessionResponseDTO, summary="Revoke a specific device session")
+async def revoke_my_session(
+    session_id: uuid.UUID,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    redis_client: redis.Redis | None = Depends(get_redis_client),
+    session: AsyncSession = Depends(get_session),
+):
+    """Удаленное завершение конкретной сессии устройства."""
+    auth_service = AuthService(session, redis_client=redis_client)
+    revoked = await auth_service.revoke_user_session(user_id, session_id)
+    if not revoked:
+        return RevokeSessionResponseDTO(
+            status="not_found",
+            revoked_session_id=session_id,
+            message="Сессия не найдена или не принадлежит пользователю",
+        )
+    return RevokeSessionResponseDTO(
+        status="ok",
+        revoked_session_id=session_id,
+        message="Сессия устройства успешно завершена",
+    )
+
+
+@router.delete("/sessions", response_model=RevokeAllSessionsResponseDTO, summary="Revoke all other device sessions")
+async def revoke_all_my_other_sessions(
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    current_session_id: uuid.UUID | None = Depends(get_current_session_id),
+    session: AsyncSession = Depends(get_session),
+):
+    """Завершение всех остальных активных сессий пользователя кроме текущей."""
+    if not current_session_id:
+        # Если session_id в токене не найден, завершаем все сессии кроме последней
+        auth_service = AuthService(session)
+        sessions = await auth_service.list_user_sessions(user_id)
+        if sessions:
+            current_session_id = sessions[0].id
+
+    auth_service = AuthService(session)
+    count = await auth_service.revoke_all_other_sessions(user_id, current_session_id) if current_session_id else 0
+    return RevokeAllSessionsResponseDTO(
+        status="ok",
+        revoked_count=count,
+        message=f"Завершено других сессий: {count}",
+    )
+

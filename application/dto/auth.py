@@ -14,6 +14,7 @@ class TokenPayloadDTO(BaseModel):
     exp: int
     type: str  # "access" | "refresh"
     is_admin: bool = False
+    session_id: uuid.UUID | None = None
 
 
 class RefreshTokenRequestDTO(BaseModel):

@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from .cellar import UserCellar
     from .scan_history import UserScanHistory
     from .preference_history import UserPreferenceHistory
+    from .user_session import UserSession
 
 
 class UserRole(str, enum.Enum):
@@ -108,6 +109,12 @@ class User(Base, UUIDMixin, TimestampMixin):
     )
     preference_history: Mapped[list["UserPreferenceHistory"]] = relationship(
         "UserPreferenceHistory",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    sessions: Mapped[list["UserSession"]] = relationship(
+        "UserSession",
         back_populates="user",
         cascade="all, delete-orphan",
         lazy="selectin",

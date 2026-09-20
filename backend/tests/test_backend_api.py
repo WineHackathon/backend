@@ -383,6 +383,71 @@ def test_logout_flow(client: TestClient):
         app.dependency_overrides.pop(get_redis_client, None)
 
 
+def test_user_sessions_endpoints(client: TestClient):
+    """Проверка эндпоинтов управления активными сессиями пользователя (/api/v1/users/sessions)."""
+    from application.services.auth_service import TokenService
+    from application.adapters.database.models.user_session import UserSession
+    from datetime import datetime, timezone
+
+    token_service = TokenService()
+    user_id = uuid.uuid4()
+    session_id = uuid.uuid4()
+    tokens = token_service.create_token_pair(user_id, session_id=session_id)
+
+    mock_session_obj = UserSession(
+        id=session_id,
+        user_id=user_id,
+        refresh_token_hash="fake_hash",
+        device_name="Chrome на macOS",
+        created_at=datetime.now(timezone.utc),
+        last_active_at=datetime.now(timezone.utc),
+        expires_at=datetime.now(timezone.utc),
+    )
+
+    with patch("application.adapters.database.repositories.session_repo.SessionRepository.list_by_user_id", new_callable=AsyncMock) as mock_list, \
+         patch("application.adapters.database.repositories.session_repo.SessionRepository.delete_by_id", new_callable=AsyncMock) as mock_del, \
+         patch("application.adapters.database.repositories.session_repo.SessionRepository.delete_by_user_id_except", new_callable=AsyncMock) as mock_del_except:
+
+        mock_list.return_value = [mock_session_obj]
+        mock_del.return_value = True
+        mock_del_except.return_value = 2
+
+        # 1. GET /api/v1/users/sessions
+        resp = client.get(
+            "/api/v1/users/sessions",
+            headers={"Authorization": f"Bearer {tokens.access_token}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["id"] == str(session_id)
+        assert data[0]["is_current"] is True
+        assert data[0]["device_name"] == "Chrome на macOS"
+
+        # 2. DELETE /api/v1/users/sessions/{session_id}
+        with patch("application.adapters.database.repositories.session_repo.SessionRepository.get_by_id", new_callable=AsyncMock) as mock_get_by_id:
+            mock_get_by_id.return_value = mock_session_obj
+            resp_del = client.delete(
+                f"/api/v1/users/sessions/{session_id}",
+                headers={"Authorization": f"Bearer {tokens.access_token}"},
+            )
+            assert resp_del.status_code == 200
+            del_data = resp_del.json()
+            assert del_data["status"] == "ok"
+            assert del_data["revoked_session_id"] == str(session_id)
+
+        # 3. DELETE /api/v1/users/sessions (revoke other sessions)
+        resp_del_all = client.delete(
+            "/api/v1/users/sessions",
+            headers={"Authorization": f"Bearer {tokens.access_token}"},
+        )
+        assert resp_del_all.status_code == 200
+        all_data = resp_del_all.json()
+        assert all_data["status"] == "ok"
+        assert all_data["revoked_count"] == 2
+
+
+
 
 
 

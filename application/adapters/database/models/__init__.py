@@ -8,6 +8,7 @@ from .cellar import UserCellar
 from .pairing import WineFoodPairing
 from .scan_history import UserScanHistory
 from .preference_history import UserPreferenceHistory
+from .user_session import UserSession
 
 __all__ = [
     "Base",
@@ -20,4 +21,5 @@ __all__ = [
     "WineFoodPairing",
     "UserScanHistory",
     "UserPreferenceHistory",
+    "UserSession",
 ]

@@ -37,7 +37,12 @@ class TokenService:
             or os.getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "30")
         )
 
-    def create_token_pair(self, user_id: uuid.UUID, is_admin: bool = False) -> TokenPairDTO:
+    def create_token_pair(
+        self,
+        user_id: uuid.UUID,
+        is_admin: bool = False,
+        session_id: uuid.UUID | None = None,
+    ) -> TokenPairDTO:
         """Создание пары токенов (access и refresh) с валидацией через TokenPayloadDTO."""
         now = datetime.now(timezone.utc)
         access_exp = int((now + timedelta(minutes=self.access_token_expire_minutes)).timestamp())
@@ -48,11 +53,13 @@ class TokenService:
             is_admin=is_admin,
             exp=access_exp,
             type="access",
+            session_id=session_id,
         )
         refresh_payload = TokenPayloadDTO(
             sub=user_id,
             exp=refresh_exp,
             type="refresh",
+            session_id=session_id,
         )
 
         access_token = jwt.encode(

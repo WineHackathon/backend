@@ -74,3 +74,23 @@ async def get_current_user_id(
         )
     return user_id
 
+
+async def get_current_session_id(
+    auth: HTTPAuthorizationCredentials | None = Depends(security),
+    redis_client: redis.Redis | None = Depends(get_redis_client),
+) -> uuid.UUID | None:
+    """Получение session_id текущего устройства из JWT токена."""
+    if not auth:
+        return None
+    try:
+        if redis_client:
+            is_blacklisted = await redis_client.get(f"token:blacklist:{auth.credentials}")
+            if is_blacklisted:
+                return None
+
+        token_service = TokenService()
+        payload = token_service.decode_access_token(auth.credentials)
+        return payload.session_id
+    except Exception:
+        return None
+

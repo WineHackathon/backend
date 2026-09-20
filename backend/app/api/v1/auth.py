@@ -1,7 +1,7 @@
 """
 Эндпоинты аутентификации и регистрации (/api/v1/auth).
 """
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
 import redis.asyncio as redis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,19 +26,36 @@ from backend.app.dependencies import security, get_redis_client
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
 
 
+def _extract_request_meta(request: Request, x_device_name: str | None = None) -> tuple[str | None, str | None, str | None]:
+    """Извлечение IP-адреса, User-Agent и названия устройства из HTTP-запроса."""
+    forwarded = request.headers.get("x-forwarded-for")
+    ip_address = forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else None)
+    user_agent = request.headers.get("user-agent")
+    device_name = x_device_name or request.headers.get("x-device-name")
+    return ip_address, user_agent, device_name
+
+
 @router.post("/register", response_model=AuthResponseDTO, summary="Register new user")
 async def register(
+    request: Request,
     dto: RegisterRequestDTO,
     x_device_fingerprint: str | None = Header(None, alias="X-Device-Fingerprint"),
+    x_device_name: str | None = Header(None, alias="X-Device-Name"),
     session: AsyncSession = Depends(get_session),
 ):
-    """Регистрация нового пользователя с получением JWT токенов и привязкой истории гостевых сканов."""
+    """Регистрация нового пользователя с получением JWT токенов, созданием сессии устройства и привязкой истории гостевых сканов."""
     if not dto.device_fingerprint and x_device_fingerprint:
         dto.device_fingerprint = x_device_fingerprint
 
-    service = AuthService(session)
+    ip_address, user_agent, device_name = _extract_request_meta(request, x_device_name)
+    service = AuthService(session, max_user_sessions=settings.max_user_sessions)
     try:
-        user_dto, tokens = await service.register(dto)
+        user_dto, tokens = await service.register(
+            dto=dto,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            device_name=device_name,
+        )
         return AuthResponseDTO(
             user=user_dto,
             tokens=tokens,
@@ -49,13 +66,24 @@ async def register(
 
 @router.post("/login", response_model=AuthResponseDTO, summary="Login with email and password")
 async def login(
+    request: Request,
     dto: LoginRequestDTO,
+    x_device_fingerprint: str | None = Header(None, alias="X-Device-Fingerprint"),
+    x_device_name: str | None = Header(None, alias="X-Device-Name"),
+    redis_client: redis.Redis | None = Depends(get_redis_client),
     session: AsyncSession = Depends(get_session),
 ):
-    """Вход по email и паролю."""
-    service = AuthService(session)
+    """Вход по email и паролю с созданием сессии устройства и контролем лимита активных устройств (FIFO)."""
+    ip_address, user_agent, device_name = _extract_request_meta(request, x_device_name)
+    service = AuthService(session, redis_client=redis_client, max_user_sessions=settings.max_user_sessions)
     try:
-        user_dto, tokens = await service.login(dto)
+        user_dto, tokens = await service.login(
+            dto=dto,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            device_name=device_name,
+            device_fingerprint=x_device_fingerprint,
+        )
         return AuthResponseDTO(
             user=user_dto,
             tokens=tokens,
@@ -66,14 +94,16 @@ async def login(
 
 @router.post("/refresh", response_model=AuthResponseDTO, summary="Refresh access token using refresh token")
 async def refresh_tokens(
+    request: Request,
     dto: RefreshTokenRequestDTO,
     redis_client: redis.Redis | None = Depends(get_redis_client),
     session: AsyncSession = Depends(get_session),
 ):
-    """Обновление пары токенов по валидному refresh-токену с проверкой отзыва (blacklist)."""
-    service = AuthService(session, redis_client=redis_client)
+    """Обновление пары токенов по валидному refresh-токену с проверкой сессии в БД и отзыва (blacklist)."""
+    ip_address, _, _ = _extract_request_meta(request)
+    service = AuthService(session, redis_client=redis_client, max_user_sessions=settings.max_user_sessions)
     try:
-        user_dto, tokens = await service.refresh_tokens(dto)
+        user_dto, tokens = await service.refresh_tokens(dto, ip_address=ip_address)
         return AuthResponseDTO(
             user=user_dto,
             tokens=tokens,
@@ -91,9 +121,8 @@ async def logout(
 ):
     """
     Выход из системы (Logout):
-    - Принимает опциональный refresh_token (в теле запроса) и/или access_token (в заголовке Authorization).
-    - Если Redis доступен, отзывает токены (помещает в blacklist) на время их оставшейся жизни.
-    - Возвращает подтверждение успешного выхода.
+    - Удаляет сессию устройства из базы данных.
+    - Отзывает токены (помещает в Redis blacklist).
     """
     service = AuthService(session, redis_client=redis_client)
     await service.logout(
@@ -101,7 +130,6 @@ async def logout(
         access_token=auth.credentials if auth else None,
     )
     return LogoutResponseDTO(status="ok", message="Успешный выход из системы")
-
 
 
 @router.get("/yandex/url", summary="Get Yandex ID OAuth authorization URL")
@@ -119,21 +147,28 @@ async def get_yandex_auth_url():
 
 @router.get("/yandex/callback", response_model=AuthResponseDTO, summary="Handle Yandex ID OAuth redirect callback")
 async def yandex_oauth_callback(
+    request: Request,
     code: str = Query(..., description="Код авторизации от Яндекса"),
     x_device_fingerprint: str | None = Header(None, alias="X-Device-Fingerprint"),
+    x_device_name: str | None = Header(None, alias="X-Device-Name"),
     session: AsyncSession = Depends(get_session),
 ):
     """Обработка обратного вызова (redirect callback) после авторизации в Яндекс ID."""
+    ip_address, user_agent, device_name = _extract_request_meta(request, x_device_name)
     service = AuthService(
         session,
         yandex_client_id=settings.yandex_client_id,
         yandex_client_secret=settings.yandex_client_secret,
         yandex_redirect_uri=settings.yandex_redirect_uri,
+        max_user_sessions=settings.max_user_sessions,
     )
     try:
         user_dto, tokens = await service.auth_yandex(
             code=code,
             device_fingerprint=x_device_fingerprint,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            device_name=device_name,
         )
         return AuthResponseDTO(
             user=user_dto,
@@ -145,21 +180,28 @@ async def yandex_oauth_callback(
 
 @router.post("/yandex", response_model=AuthResponseDTO, summary="Authorize with Yandex ID code from SPA/mobile")
 async def auth_yandex(
+    request: Request,
     dto: YandexAuthDTO,
     x_device_fingerprint: str | None = Header(None, alias="X-Device-Fingerprint"),
+    x_device_name: str | None = Header(None, alias="X-Device-Name"),
     session: AsyncSession = Depends(get_session),
 ):
     """Авторизация через Яндекс ID по коду (для мобильных приложений и SPA)."""
+    ip_address, user_agent, device_name = _extract_request_meta(request, x_device_name)
     service = AuthService(
         session,
         yandex_client_id=settings.yandex_client_id,
         yandex_client_secret=settings.yandex_client_secret,
         yandex_redirect_uri=settings.yandex_redirect_uri,
+        max_user_sessions=settings.max_user_sessions,
     )
     try:
         user_dto, tokens = await service.auth_yandex(
             code=dto.code,
             device_fingerprint=x_device_fingerprint,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            device_name=device_name,
         )
         return AuthResponseDTO(
             user=user_dto,
@@ -167,6 +209,7 @@ async def auth_yandex(
         )
     except AuthenticationError as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=e.message)
+
 
 
 
