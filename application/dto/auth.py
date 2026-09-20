@@ -51,6 +51,8 @@ class TokenPairDTO(BaseModel):
 class YandexAuthDTO(BaseModel):
     """Запрос авторизации через OAuth Яндекс ID."""
     code: str = Field(description="Authorization code от Яндекса")
+    device_name: str | None = Field(default=None, description="Название устройства (например, MacBook Pro 16, iPhone 15)")
+    device_fingerprint: str | None = Field(default=None, description="Фингерпринт устройства для привязки гостевых сканов")
 
 
 class AuthResponseDTO(BaseModel):

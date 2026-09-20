@@ -184,8 +184,9 @@ async def auth_yandex(
     session: AsyncSession = Depends(get_session),
 ):
     """Авторизация через Яндекс ID по коду (для мобильных приложений и SPA)."""
-    ip_address, user_agent, device_name = _extract_request_meta(request)
-    x_device_fingerprint = request.headers.get("x-device-fingerprint")
+    ip_address, user_agent, extracted_device_name = _extract_request_meta(request)
+    device_name = dto.device_name or extracted_device_name
+    device_fingerprint = dto.device_fingerprint or request.headers.get("x-device-fingerprint")
     service = AuthService(
         session,
         yandex_client_id=settings.yandex_client_id,
@@ -196,7 +197,7 @@ async def auth_yandex(
     try:
         user_dto, tokens = await service.auth_yandex(
             code=dto.code,
-            device_fingerprint=x_device_fingerprint,
+            device_fingerprint=device_fingerprint,
             ip_address=ip_address,
             user_agent=user_agent,
             device_name=device_name,

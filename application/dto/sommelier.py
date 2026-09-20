@@ -14,11 +14,30 @@ class OnboardingQuestionDTO(BaseModel):
     adaptive: bool = False
 
 
+from typing import Any
+
+
 class OnboardingAnswerDTO(BaseModel):
-    """Ответ пользователя на вопрос онбординга."""
-    step: int
-    code: str
-    answer: str
+    """
+    Ответ пользователя на вопрос онбординга.
+    Поддерживает как плоский формат: {"step": 1, "code": "category", "answer": "Белое", "answers_history": {...}},
+    так и вложенный формат: {"answer": {"step": 1, "code": "category", "answer": "Белое"}, "answers_history": {...}}.
+    """
+    step: int | None = Field(default=None, description="Номер шага (1-5)")
+    code: str | None = Field(default=None, description="Код вопроса (category, sweetness, body, acidity, aromas)")
+    answer: str | dict[str, Any] = Field(description="Текст ответа или вложенный объект ответа")
+    answers_history: dict[str, str] = Field(default_factory=dict, description="Ранее накопленные ответы онбординга")
+
+    def get_parsed_data(self) -> tuple[int, str, str, dict[str, str]]:
+        if isinstance(self.answer, dict):
+            step = int(self.answer.get("step", self.step or 1))
+            code = str(self.answer.get("code", self.code or "category"))
+            ans = str(self.answer.get("answer", ""))
+        else:
+            step = int(self.step or 1)
+            code = str(self.code or "category")
+            ans = str(self.answer)
+        return step, code, ans, dict(self.answers_history or {})
 
 
 class OnboardingStateDTO(BaseModel):

@@ -447,6 +447,73 @@ def test_user_sessions_endpoints(client: TestClient):
         assert all_data["revoked_count"] == 2
 
 
+def test_submit_onboarding_answer_flat_format(client: TestClient):
+    """Проверка отправки ответа онбординга в удобном плоском формате (без вложенного 'answer')."""
+    payload = {
+        "step": 1,
+        "code": "category",
+        "answer": "Белое",
+        "answers_history": {}
+    }
+    resp = client.post("/api/v1/sommelier/onboarding/answer", json=payload)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["current_step"] == 1
+    assert data["completed"] is False
+    assert data["next_question"] is not None
+    assert "sweetness" in data["next_question"]["code"]
+
+
+def test_add_to_cellar_by_slug(client: TestClient):
+    """Проверка добавления вина в погреб по wine_slug вместо wine_id."""
+    from application.services.auth_service import TokenService
+    from application.adapters.database.models.wine import Wine
+    from application.adapters.database.models.cellar import UserCellar, CellarStatus
+
+    token_service = TokenService()
+    user_id = uuid.uuid4()
+    tokens = token_service.create_token_pair(user_id)
+
+    from application.entities.wine_categories import WineCategory, SugarType
+    mock_wine = Wine(
+        id=uuid.uuid4(),
+        name="Шато Ле Гран Восток",
+        slug="chateau-le-grand-vostok",
+        category=WineCategory.WHITE,
+        color_desc="Белое",
+        sugar_type=SugarType.DRY,
+        region="Кубань",
+        grape_varieties=["Совиньон Блан"],
+        description="Свежее белое вино",
+        winery="Chateau Le Grand Vostok",
+    )
+
+    with patch("application.adapters.database.repositories.wine_repo.WineRepository.get_by_slug", new_callable=AsyncMock) as mock_get_slug, \
+         patch("application.adapters.database.repositories.cellar_repo.CellarRepository.get_by_user_and_wine", new_callable=AsyncMock) as mock_get_existing, \
+         patch("application.adapters.database.repositories.cellar_repo.CellarRepository.save", new_callable=AsyncMock) as mock_save:
+
+        mock_get_slug.return_value = mock_wine
+        mock_get_existing.return_value = None
+
+        payload = {
+            "wine_slug": "chateau-le-grand-vostok",
+            "status": "wishlist",
+            "bottles_count": 2,
+            "tasting_notes": "Купить к празднику"
+        }
+        resp = client.post(
+            "/api/v1/users/cellar",
+            json=payload,
+            headers={"Authorization": f"Bearer {tokens.access_token}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["wine_id"] == str(mock_wine.id)
+        assert data["status"] == "wishlist"
+        assert data["bottles_count"] == 2
+
+
+
 
 
 

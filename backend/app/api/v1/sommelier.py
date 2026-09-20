@@ -34,8 +34,7 @@ async def get_onboarding_questions():
 
 @router.post("/onboarding/answer", response_model=OnboardingStateDTO, summary="Отправить ответ на вопрос сомелье и получить следующий шаг")
 async def submit_onboarding_answer(
-    answer: OnboardingAnswerDTO,
-    answers_history: dict[str, str] | None = None,
+    dto: OnboardingAnswerDTO,
     user_id: uuid.UUID | None = Depends(get_optional_user_id),
     session: AsyncSession = Depends(get_session),
 ):
@@ -44,9 +43,8 @@ async def submit_onboarding_answer(
     - Если пользователь анонимный и дошел до конца: возвращается registration_required: true и тизер.
     - Если пользователь авторизован: возвращаются подобранные винные карточки и запускается фоновое обновление профиля.
     """
-    current_answers = answers_history or {}
-    current_answers[answer.code] = answer.answer
-    step = answer.step
+    step, code, answer_text, current_answers = dto.get_parsed_data()
+    current_answers[code] = answer_text
 
     # Проверка, есть ли следующий вопрос
     if step < 5:

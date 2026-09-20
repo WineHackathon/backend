@@ -4,7 +4,7 @@
 """
 import uuid
 import logging
-from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.adapters.database.db_session import get_session
@@ -28,7 +28,7 @@ router = APIRouter(prefix="/api/v1/ml", tags=["Сканирование этик
 async def scan_wine_label(
     request: Request,
     image: UploadFile = File(..., description="Фотография этикетки или бутылки"),
-    x_device_fingerprint: str | None = Header(None, alias="X-Device-Fingerprint"),
+    device_fingerprint: str | None = Form(None, description="Отпечаток устройства для гостей (для привязки истории)"),
     user_id: uuid.UUID | None = Depends(get_optional_user_id),
     rate_limiter: ScanRateLimiter = Depends(get_rate_limiter),
     ml_dispatcher: MLDispatcher = Depends(get_ml_dispatcher),
@@ -42,6 +42,7 @@ async def scan_wine_label(
     4. Распознает вино через ML-слой, подтягивает карточку из каталога.
     5. Сохраняет историю сканирования в базу данных.
     """
+    x_device_fingerprint = device_fingerprint or request.headers.get("x-device-fingerprint")
     # Валидация формата файла
     allowed_types = {"image/jpeg", "image/png", "image/webp"}
     if image.content_type and image.content_type not in allowed_types:

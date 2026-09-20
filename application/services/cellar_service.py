@@ -2,6 +2,7 @@
 Прикладной сервис винного погреба пользователя.
 """
 import uuid
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.adapters.database.models.cellar import UserCellar, CellarStatus
@@ -43,12 +44,19 @@ class CellarService:
         return [self.to_dto(i) for i in items]
 
     async def add_item(self, user_id: uuid.UUID, dto: CellarItemCreateDTO) -> CellarItemDTO:
-        """Добавление вина в погреб или вишлист."""
-        wine = await self.wine_repo.get_by_id(dto.wine_id)
-        if not wine:
-            raise WineNotFound(str(dto.wine_id))
+        """Добавление вина в погреб или вишлист (по wine_id или wine_slug)."""
+        wine = None
+        if dto.wine_id:
+            wine = await self.wine_repo.get_by_id(dto.wine_id)
+        elif dto.wine_slug:
+            wine = await self.wine_repo.get_by_slug(dto.wine_slug)
 
-        existing = await self.cellar_repo.get_by_user_and_wine(user_id, dto.wine_id, dto.status)
+        if not wine:
+            target = str(dto.wine_id or dto.wine_slug or "не указан")
+            raise WineNotFound(target)
+
+        wine_id = wine.id
+        existing = await self.cellar_repo.get_by_user_and_wine(user_id, wine_id, dto.status)
         if existing:
             existing.bottles_count += dto.bottles_count
             if dto.personal_rating is not None:
@@ -57,15 +65,18 @@ class CellarService:
                 existing.tasting_notes = dto.tasting_notes
             async with self.tm:
                 await self.cellar_repo.save(existing)
+            existing.wine = wine
             return self.to_dto(existing)
 
         item = UserCellar(
+            id=uuid.uuid4(),
             user_id=user_id,
-            wine_id=dto.wine_id,
+            wine_id=wine_id,
             status=dto.status,
             bottles_count=dto.bottles_count,
             personal_rating=dto.personal_rating,
             tasting_notes=dto.tasting_notes,
+            created_at=datetime.now(timezone.utc),
         )
         async with self.tm:
             await self.cellar_repo.save(item)

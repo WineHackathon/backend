@@ -10,7 +10,8 @@ from application.dto.wine import WineDTO
 
 class CellarItemCreateDTO(BaseModel):
     """Запрос на добавление вина в погреб или вишлист."""
-    wine_id: uuid.UUID
+    wine_id: uuid.UUID | None = Field(default=None, description="UUID вина (если известен)")
+    wine_slug: str | None = Field(default=None, description="Слаг вина (например, avtohtonnoe-vino-kryma-beloe-suhoe)")
     status: CellarStatus = Field(default=CellarStatus.IN_CELLAR, description="Статус: in_cellar, wishlist, tasted")
     bottles_count: int = Field(default=1, ge=1)
     personal_rating: int | None = Field(default=None, ge=1, le=5)
