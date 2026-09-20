@@ -16,6 +16,7 @@ from application.dto.wine import (
     TasteMatrixSearchDTO,
     PaginatedWinesDTO,
 )
+from application.dto.wine_intent import WineSearchIntent
 from application.exceptions.domain_exceptions import WineNotFound
 
 
@@ -155,4 +156,10 @@ class CatalogService:
             limit=limit + 2,
         )
         return [self.to_dto(w) for w in wines if w.slug != slug][:limit]
+
+    async def recommend_wines_by_intent(self, intent: WineSearchIntent, limit: int = 3) -> list[WineDTO]:
+        """Умный многокритериальный подбор вин на основе извлеченных намерений пользователя."""
+        wines = await self.repo.find_recommended_wines(intent, limit=limit)
+        return [self.to_dto(w) for w in wines]
+
 

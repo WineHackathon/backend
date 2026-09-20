@@ -43,3 +43,7 @@ minio_data/
 clickdata/
 *.npz
 *.npz.sig
+
+# Test scripts and temporary CLI tools
+scripts/test_ws_chat.py
+

@@ -183,7 +183,7 @@ async def sommelier_websocket_test_page():
 <div class="container">
   <h1>🍷 AI-Сомелье — Живой WebSocket Тестер</h1>
   <div class="auth-box">
-    <input type="text" id="tokenInput" value="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmMmViMzg3YS1iNGY2LTRjZmQtYjJmMS04ODRlNDdlZDU5YzAiLCJleHAiOjE3ODk5MDQ5MzMsInR5cGUiOiJhY2Nlc3MiLCJpc19hZG1pbiI6ZmFsc2UsInNlc3Npb25faWQiOm51bGx9.z9Fpbc7yvXhwdG2o9BJBa6STHcIh9SCpcJaCEuvJc4M" placeholder="Вставьте Access Token (для авторизованного режима)...">
+    <input type="text" id="tokenInput" placeholder="Вставьте Access Token (для авторизованного режима)...">
     <button id="connectBtn" onclick="toggleConnect()">Подключиться</button>
   </div>
   <div class="chat-box" id="chatBox">

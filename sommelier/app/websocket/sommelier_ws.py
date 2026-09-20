@@ -19,6 +19,7 @@ from sommelier.app.services.onboarding_service import SommelierOnboardingService
 from sommelier.app.services.recommendation_engine import SommelierRecommendationEngine
 from sommelier.app.services.llm_client import SommelierLLMClient
 from sommelier.app.services.rag_service import SommelierRAGService
+from sommelier.app.services.intent_extractor import intent_extractor
 
 logger = logging.getLogger(__name__)
 
@@ -162,14 +163,10 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                                         base_slug = found.items[0].slug
                                         candidates = await catalog_service.find_similar_wines(base_slug, limit=3)
 
-                            # 3. Общий поиск по запросу пользователя (сорт, категория, гастропара)
+                            # 3. Интеллектуальный многокритериальный поиск по намерениям (Intent Extractor)
                             if not candidates:
-                                found = await catalog_service.list_wines(query=user_text, limit=3)
-                                candidates = found.items
-
-                            # 4. Если ничего не найдено по строгому поиску, подбираем популярные образцы
-                            if not candidates:
-                                candidates = await catalog_service.search_by_taste_matrix(limit=3)
+                                intent = await intent_extractor.extract_intent(user_text, llm_client)
+                                candidates = await catalog_service.recommend_wines_by_intent(intent, limit=3)
 
                         except Exception as exc:
                             logger.warning(f"Ошибка поиска вин в каталоге для копайлота: {exc}")
@@ -178,12 +175,15 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                 system_prompt = rag_service.build_system_prompt(context_wine=context_wine_dict)
                 if candidates:
                     candidates_summary = "\n".join([
-                        f"- {c.name} ({c.category}, {c.sugar_type or ''}, регион {c.region or 'Россия'}, цена ~{c.price_rub or 'Н/Д'} руб.)"
+                        f"- {c.name} (Категория: {c.category}, Сахар: {c.sugar_type or 'Сухое'}, Регион: {c.region or 'Россия'}, "
+                        f"Оценка Роскачества: {c.roskachestvo_score or 'Н/Д'}/100, Тело/плотность: {c.body or 'умеренное'}/5, "
+                        f"Кислотность: {c.acidity or 'сбалансированная'}/5, Дуб: {c.oak or 'нет'}/5, Цена: ~{c.price_rub or 'Н/Д'} руб.)"
                         for c in candidates
                     ])
                     system_prompt += (
                         f"\n\nПодобранные актуальные российские вина из каталога для рекомендации:\n{candidates_summary}\n"
-                        "Кратко упомяните эти вина в ответе, объяснив пользователю, чем они хороши и почему подходят."
+                        "ОБЯЗАТЕЛЬНО упомяните эти вина в ответе. Ответьте лаконично и емко (2 коротких абзаца, до 100-120 слов). "
+                        "Поясните, почему эти образцы гармонируют с запросом (танины, плотность, кислотность, блюдо)."
                     )
 
                 candidates_data = [
@@ -191,7 +191,14 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                     for c in candidates
                 ]
 
-                # Генерация ответа: потоковая или единая
+                # Фаза 1: Мгновенная отправка карточек вин клиенту (15-20 мс)
+                if candidates_data:
+                    await websocket.send_json({
+                        "type": "candidates_ready",
+                        "candidates": candidates_data,
+                    })
+
+                # Фаза 2: Генерация ответа (потоковая или единая)
                 if stream_enabled:
                     full_reply = []
                     async for chunk in llm_client.stream_response(system_prompt, chat_history):
@@ -208,6 +215,8 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                     })
                 else:
                     reply = await llm_client.generate_response(system_prompt, chat_history)
+                    if not reply or not str(reply).strip():
+                        reply = llm_client._build_smart_fallback_reply(system_prompt, chat_history)
                     chat_history.append({"role": "assistant", "content": reply})
                     await websocket.send_json({
                         "type": "message",

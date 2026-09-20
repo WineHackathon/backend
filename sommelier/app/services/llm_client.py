@@ -65,15 +65,19 @@ class SommelierLLMClient:
             "model": self.model,
             "messages": payload_messages,
             "temperature": 0.7,
-            "max_tokens": 600,
+            "max_tokens": 300,
+            "provider": {
+                "order": ["Cerebras", "Groq"],
+                "allow_fallbacks": True,
+            },
         }
 
-        max_retries = 3
-        backoff = 0.5
+        max_retries = 2
+        backoff = 0.2
 
         for attempt in range(max_retries):
             try:
-                async with httpx.AsyncClient(timeout=30.0) as client:
+                async with httpx.AsyncClient(timeout=8.0) as client:
                     resp = await client.post(
                         f"{self.base_url}/chat/completions",
                         headers=headers,
@@ -81,20 +85,49 @@ class SommelierLLMClient:
                     )
                     if resp.status_code == 200:
                         res_json = resp.json()
-                        return res_json["choices"][0]["message"]["content"]
+                        msg = res_json["choices"][0]["message"]
+                        content = msg.get("content")
+                        if content and content.strip():
+                            return content.strip()
+                        return self._build_smart_fallback_reply(system_prompt, messages)
                     elif resp.status_code in (429, 500, 502, 503, 504):
                         logger.warning(f"LLM API вернул статус {resp.status_code}, попытка {attempt + 1}/{max_retries}")
                         await asyncio.sleep(backoff)
-                        backoff *= 2
+                        backoff *= 1.5
                     else:
                         logger.error(f"Неожиданный ответ LLM API: {resp.status_code} {resp.text}")
                         break
             except Exception as e:
                 logger.warning(f"Ошибка сетевого запроса к LLM: {e}, попытка {attempt + 1}/{max_retries}")
                 await asyncio.sleep(backoff)
-                backoff *= 2
+                backoff *= 1.5
 
-        # Fallback при недоступности внешнего API
+        # Интеллектуальный Fallback при недоступности внешнего API
+        return self._build_smart_fallback_reply(system_prompt, messages)
+
+    def _build_smart_fallback_reply(self, system_prompt: str, messages: list[dict[str, str]]) -> str:
+        """Интеллектуальный синтез ответа сомелье с упоминанием отобранных вин при недоступности LLM."""
+        if "Подобранные актуальные российские вина" in system_prompt:
+            try:
+                chunk = system_prompt.split("Подобранные актуальные российские вина из каталога для рекомендации:")[1]
+                chunk = chunk.split("ОБЯЗАТЕЛЬНО")[0].strip()
+                wine_bullets = [line.strip() for line in chunk.split("\n") if line.strip().startswith("-")]
+
+                reply_parts = [
+                    "Отличный запрос! Я внимательно проанализировал ваше пожелание и подобрал из нашего каталога великолепные российские вина с высокими оценками Роскачества, которые идеально раскроют эту гастропару:\n"
+                ]
+                for b in wine_bullets:
+                    clean = b.lstrip("- ").strip()
+                    reply_parts.append(f"• **{clean}**")
+
+                reply_parts.append(
+                    "\nЭти вина отличаются плотной структурой, сбалансированной кислотностью и выразительным терруаром. "
+                    "Какое из них вас заинтересовало подробнее?"
+                )
+                return "\n".join(reply_parts)
+            except Exception:
+                pass
+
         return (
             "Благодарю за вопрос! Российское виноделие сегодня предлагает великолепные образцы. "
             "Рекомендую обратить внимание на вина Кубани и Крыма, отмеченные оценками Роскачества выше 83 баллов!"
@@ -144,8 +177,12 @@ class SommelierLLMClient:
             "model": self.model,
             "messages": payload_messages,
             "temperature": 0.7,
-            "max_tokens": 600,
+            "max_tokens": 300,
             "stream": True,
+            "provider": {
+                "order": ["Cerebras", "Groq"],
+                "allow_fallbacks": True,
+            },
         }
 
         try:
