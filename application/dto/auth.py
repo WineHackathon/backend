@@ -26,6 +26,8 @@ class LoginRequestDTO(BaseModel):
     """Запрос на вход по Email и паролю."""
     email: EmailStr
     password: str = Field(min_length=6)
+    device_name: str | None = Field(default=None, description="Название устройства (например, MacBook Pro 16, iPhone 15)")
+    device_fingerprint: str | None = Field(default=None, description="Фингерпринт устройства для привязки гостевых сканов")
 
 
 class RegisterRequestDTO(BaseModel):
@@ -34,6 +36,7 @@ class RegisterRequestDTO(BaseModel):
     password: str = Field(min_length=6)
     first_name: str = Field(default="Пользователь")
     last_name: str | None = None
+    device_name: str | None = Field(default=None, description="Название устройства (например, MacBook Pro 16, iPhone 15)")
     device_fingerprint: str | None = Field(default=None, description="Фингерпринт гостя для привязки истории сканирований")
 
 

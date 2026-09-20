@@ -299,6 +299,11 @@ class AuthService:
                 except Exception:
                     pass
 
+        # Привязка истории гостевых сканов (если юзер ранее сканировал как гость)
+        if device_fingerprint:
+            scan_repo = ScanRepository(self.session)
+            await scan_repo.link_guest_scans_to_user(device_fingerprint, user.id)
+
         session_id = uuid.uuid4()
         tokens = self.create_token_pair(user.id, is_admin=user.is_admin, session_id=session_id)
         expires_at = datetime.now(timezone.utc) + timedelta(days=self.refresh_token_expire_days)

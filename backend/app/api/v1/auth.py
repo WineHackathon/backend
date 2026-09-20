@@ -46,7 +46,8 @@ async def register(
     if not dto.device_fingerprint and x_device_fingerprint:
         dto.device_fingerprint = x_device_fingerprint
 
-    ip_address, user_agent, device_name = _extract_request_meta(request)
+    ip_address, user_agent, extracted_device_name = _extract_request_meta(request)
+    device_name = dto.device_name or extracted_device_name
     service = AuthService(session, max_user_sessions=settings.max_user_sessions)
     try:
         user_dto, tokens = await service.register(
@@ -71,8 +72,9 @@ async def login(
     session: AsyncSession = Depends(get_session),
 ):
     """Вход по email и паролю с созданием сессии устройства и контролем лимита активных устройств (FIFO)."""
-    ip_address, user_agent, device_name = _extract_request_meta(request)
-    x_device_fingerprint = request.headers.get("x-device-fingerprint")
+    ip_address, user_agent, extracted_device_name = _extract_request_meta(request)
+    device_name = dto.device_name or extracted_device_name
+    device_fingerprint = dto.device_fingerprint or request.headers.get("x-device-fingerprint")
     service = AuthService(session, redis_client=redis_client, max_user_sessions=settings.max_user_sessions)
     try:
         user_dto, tokens = await service.login(
@@ -80,7 +82,7 @@ async def login(
             ip_address=ip_address,
             user_agent=user_agent,
             device_name=device_name,
-            device_fingerprint=x_device_fingerprint,
+            device_fingerprint=device_fingerprint,
         )
         return AuthResponseDTO(
             user=user_dto,
