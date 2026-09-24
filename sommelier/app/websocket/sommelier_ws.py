@@ -12,6 +12,7 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from application.adapters.database.db_session import create_session
+from application.adapters.database.repositories.user_repo import UserRepository
 from application.services.catalog_service import CatalogService
 from application.services.token_service import TokenService
 from application.services.taste_profile_service import TasteProfileService
@@ -50,11 +51,23 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
 
     # Аутентификация через query parameter ?token=...
     user_id: uuid.UUID | None = None
+    user_name: str = "пользователь"
+    user_taste_profile: dict = {}
+    has_taste_profile: bool = False
+
     query_token = websocket.query_params.get("token")
     if query_token:
         try:
             payload = token_service.decode_access_token(query_token)
             user_id = payload.sub
+            async with create_session() as session:
+                user_repo = UserRepository(session)
+                user = await user_repo.get_by_id(user_id)
+                if user:
+                    user_name = user.first_name or "пользователь"
+                    user_taste_profile = user.taste_profile or {}
+                    if user_taste_profile.get("preferred_categories") or user_taste_profile.get("sweetness_pref") is not None:
+                        has_taste_profile = True
         except Exception as e:
             logger.warning(f"Недействительный токен в query params WebSocket: {e}")
 
@@ -141,17 +154,32 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
         })
 
     try:
-        # Отправляем приветствие с описанием возможностей копайлота и 1-м вопросом онбординга
-        first_q = onboarding_service.get_question(step=1)
-        await websocket.send_json({
-            "type": "welcome",
-            "message": (
-                "Приветствую! Я ваш цифровой AI-сомелье и персональный винный копайлот. "
-                "Вы можете задавать мне любые вопросы о вине, регионах и гастропарах, "
-                "попросить найти похожие вина или пройти быстрый подбор из 5 вопросов!"
-            ),
-            "question": first_q.model_dump(),
-        })
+        # Отправляем приветствие с учетом сохраненного вкусового профиля
+        if has_taste_profile:
+            cat_info = ", ".join(user_taste_profile.get("preferred_categories", [])) or "разные вина"
+            await websocket.send_json({
+                "type": "welcome",
+                "message": (
+                    f"Приветствую, {user_name}! Я помню ваши вкусовые предпочтения ({cat_info}). "
+                    "Вы можете задать мне любой вопрос о винах и гастропарах (например, «подбери вино к стейку» или «к рыбе»), "
+                    "попросить найти аналог вина или пройти опрос заново."
+                ),
+                "has_taste_profile": True,
+                "taste_profile": user_taste_profile,
+                "question": None,
+            })
+        else:
+            first_q = onboarding_service.get_question(step=1)
+            await websocket.send_json({
+                "type": "welcome",
+                "message": (
+                    "Приветствую! Я ваш цифровой AI-сомелье и персональный винный копайлот. "
+                    "Вы можете задавать мне любые вопросы о вине, регионах и гастропарах, "
+                    "попросить найти похожие вина или пройти быстрый подбор из 5 вопросов!"
+                ),
+                "has_taste_profile": False,
+                "question": first_q.model_dump(),
+            })
 
         while True:
             data = await websocket.receive_json()
@@ -166,10 +194,21 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                     try:
                         payload = token_service.decode_access_token(auth_token)
                         user_id = payload.sub
+                        async with create_session() as session:
+                            user_repo = UserRepository(session)
+                            u = await user_repo.get_by_id(user_id)
+                            if u:
+                                user_name = u.first_name or "пользователь"
+                                user_taste_profile = u.taste_profile or {}
+                                if user_taste_profile.get("preferred_categories") or user_taste_profile.get("sweetness_pref") is not None:
+                                    has_taste_profile = True
+
                         await websocket.send_json({
                             "type": "auth_success",
                             "user_id": str(user_id),
                             "message": "Успешная авторизация в сессии сомелье.",
+                            "has_taste_profile": has_taste_profile,
+                            "taste_profile": user_taste_profile,
                         })
                         # Если пользователь уже прошел 5 вопросов до авторизации — сразу отдаем рекомендации
                         if onboarding_completed:
@@ -185,6 +224,21 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                         "type": "auth_error",
                         "message": "Токен не предоставлен.",
                     })
+                continue
+
+            # -----------------------------------------------------------------
+            # 0.1 Явный перезапуск онбординга пользователем (type: "start_onboarding")
+            # -----------------------------------------------------------------
+            if msg_type == "start_onboarding":
+                answers.clear()
+                current_step = 1
+                onboarding_completed = False
+                first_q = onboarding_service.get_question(step=1)
+                await websocket.send_json({
+                    "type": "next_question",
+                    "step": 1,
+                    "question": first_q.model_dump(),
+                })
                 continue
 
             # -----------------------------------------------------------------
@@ -239,6 +293,13 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                             # 3. Интеллектуальный многокритериальный поиск по намерениям (Intent Extractor)
                             if not candidates:
                                 intent = await intent_extractor.extract_intent(user_text, llm_client)
+                                # Если в запросе не указана категория или сладость, учитываем вкусовой профиль пользователя
+                                if user_taste_profile:
+                                    if not intent.category and user_taste_profile.get("preferred_categories"):
+                                        intent.category = user_taste_profile["preferred_categories"][0]
+                                    if not intent.sugar_type and user_taste_profile.get("sweetness_pref") is not None:
+                                        if user_taste_profile["sweetness_pref"] <= 1.8:
+                                            intent.sugar_type = "Сухое"
                                 candidates = await catalog_service.recommend_wines_by_intent(intent, limit=3)
 
                         except Exception as exc:
@@ -246,6 +307,19 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
 
                 # Формируем системный контекст для LLM (RAG)
                 system_prompt = rag_service.build_system_prompt(context_wine=context_wine_dict)
+                if user_taste_profile:
+                    pref_parts = []
+                    if user_taste_profile.get("preferred_categories"):
+                        pref_parts.append(f"Любимые категории: {', '.join(user_taste_profile['preferred_categories'])}")
+                    if user_taste_profile.get("sweetness_pref") is not None:
+                        pref_parts.append(f"Сладость: {user_taste_profile['sweetness_pref']}/5")
+                    if user_taste_profile.get("body_pref") is not None:
+                        pref_parts.append(f"Тело/плотность: {user_taste_profile['body_pref']}/5")
+                    if user_taste_profile.get("favorite_aromas"):
+                        pref_parts.append(f"Любимые ароматы: {', '.join(user_taste_profile['favorite_aromas'])}")
+                    if pref_parts:
+                        system_prompt += f"\n\nПостоянный вкусовой профиль пользователя: {'; '.join(pref_parts)}. Учитывайте его персональные вкусы при рекомендации."
+
                 if candidates:
                     candidates_summary = "\n".join([
                         f"- {c.name} (Категория: {c.category}, Сахар: {c.sugar_type or 'Сухое'}, Регион: {c.region or 'Россия'}, "
