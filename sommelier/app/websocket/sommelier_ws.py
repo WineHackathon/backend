@@ -61,6 +61,84 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
     answers: dict[str, str] = {}
     current_step = 1
     chat_history: list[dict[str, str]] = []
+    onboarding_completed = False
+
+    async def _finish_and_send_recommendations(target_user_id: uuid.UUID) -> None:
+        """Подбор вин по вкусовой матрице, сохранение профиля в БД и отправка события completed."""
+        final_candidates = []
+        async with _get_catalog_service() as catalog_service:
+            if catalog_service:
+                try:
+                    final_candidates = await catalog_service.search_by_taste_matrix(
+                        category=answers.get("category"),
+                        target_sweetness=1.2 if "сух" in answers.get("sweetness", "").lower() else 3.0,
+                        target_body=4.5 if "плотн" in answers.get("body", "").lower() or "дуб" in answers.get("body_oak", "").lower() else 2.5,
+                        target_acidity=4.0 if "свежест" in answers.get("acidity", "").lower() else 2.5,
+                        limit=4,
+                    )
+                except Exception as e:
+                    logger.warning(f"Ошибка подбора вин по вкусовой матрице в онбординге: {e}")
+
+        if not final_candidates:
+            mock_candidates = [
+                {
+                    "slug": "fanagoria-cru-2020",
+                    "name": "Фанагория Крю Лермонт Каберне Совиньон",
+                    "category": answers.get("category", "Красное"),
+                    "sweetness": 1.2,
+                    "body": 4.5,
+                    "acidity": 3.0,
+                    "oak": 4.0,
+                    "aroma_tags": ["вишня", "дуб", "черная смородина"],
+                },
+                {
+                    "slug": "usadba-divnomorskoe-2021",
+                    "name": "Усадьба Дивноморское Восточный Склон",
+                    "category": answers.get("category", "Белое"),
+                    "sweetness": 1.1,
+                    "body": 2.5,
+                    "acidity": 4.2,
+                    "oak": 1.5,
+                    "aroma_tags": ["цитрус", "белые цветы", "минералы"],
+                },
+            ]
+            ranked = recommendation_engine.rank_candidates(
+                candidates=mock_candidates,
+                target_sweetness=1.2 if "сух" in answers.get("sweetness", "").lower() else 3.0,
+                target_body=4.5 if "плотн" in answers.get("body", "").lower() or "дуб" in answers.get("body_oak", "").lower() else 2.5,
+            )
+            final_candidates = ranked
+
+        candidates_data = [
+            c.model_dump(mode="json") if hasattr(c, "model_dump") else c
+            for c in final_candidates
+        ]
+
+        # Фоновое сохранение вкусового профиля и сессии предпочтений пользователя в БД
+        try:
+            async with create_session() as session:
+                taste_service = TasteProfileService(session)
+                session_id = str(uuid.uuid4())
+                recommended_slugs = [
+                    c.slug if hasattr(c, "slug") else c.get("slug")
+                    for c in final_candidates
+                    if (hasattr(c, "slug") and c.slug) or (isinstance(c, dict) and c.get("slug"))
+                ]
+                await taste_service.record_preferences_and_update_profile(
+                    user_id=target_user_id,
+                    session_id=session_id,
+                    raw_answers=answers,
+                    recommended_slugs=recommended_slugs,
+                )
+        except Exception as exc:
+            logger.warning("Не удалось обновить вкусовой профиль пользователя %s: %s", target_user_id, exc)
+
+        await websocket.send_json({
+            "type": "completed",
+            "message": "Превосходно! Ваш вкусовой профиль сформирован. Вот лучшие кандидаты по вашему вкусу:",
+            "candidates": candidates_data,
+            "registration_required": False,
+        })
 
     try:
         # Отправляем приветствие с описанием возможностей копайлота и 1-м вопросом онбординга
@@ -93,6 +171,9 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                             "user_id": str(user_id),
                             "message": "Успешная авторизация в сессии сомелье.",
                         })
+                        # Если пользователь уже прошел 5 вопросов до авторизации — сразу отдаем рекомендации
+                        if onboarding_completed:
+                            await _finish_and_send_recommendations(user_id)
                     except Exception as e:
                         logger.warning(f"Ошибка WebSocket auth: {e}")
                         await websocket.send_json({
@@ -242,6 +323,8 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                     })
                 else:
                     # Завершены 5 вопросов онбординга
+                    onboarding_completed = True
+
                     # Пейволл для неавторизованных гостей
                     if not user_id:
                         await websocket.send_json({
@@ -252,81 +335,8 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                         })
                         continue
 
-                    # Для авторизованных пользователей: подбор вин по вкусовой матрице
-                    final_candidates = []
-                    async with _get_catalog_service() as catalog_service:
-                        if catalog_service:
-                            try:
-                                final_candidates = await catalog_service.search_by_taste_matrix(
-                                    category=answers.get("category"),
-                                    target_sweetness=1.2 if "сух" in answers.get("sweetness", "").lower() else 3.0,
-                                    target_body=4.5 if "плотн" in answers.get("body", "").lower() or "дуб" in answers.get("body_oak", "").lower() else 2.5,
-                                    target_acidity=4.0 if "свежест" in answers.get("acidity", "").lower() else 2.5,
-                                    limit=4,
-                                )
-                            except Exception as e:
-                                logger.warning(f"Ошибка подбора вин по вкусовой матрице в онбординге: {e}")
-
-                    if not final_candidates:
-                        mock_candidates = [
-                            {
-                                "slug": "fanagoria-cru-2020",
-                                "name": "Фанагория Крю Лермонт Каберне Совиньон",
-                                "category": answers.get("category", "Красное"),
-                                "sweetness": 1.2,
-                                "body": 4.5,
-                                "acidity": 3.0,
-                                "oak": 4.0,
-                                "aroma_tags": ["вишня", "дуб", "черная смородина"],
-                            },
-                            {
-                                "slug": "usadba-divnomorskoe-2021",
-                                "name": "Усадьба Дивноморское Восточный Склон",
-                                "category": answers.get("category", "Белое"),
-                                "sweetness": 1.1,
-                                "body": 2.5,
-                                "acidity": 4.2,
-                                "oak": 1.5,
-                                "aroma_tags": ["цитрус", "белые цветы", "минералы"],
-                            },
-                        ]
-                        ranked = recommendation_engine.rank_candidates(
-                            candidates=mock_candidates,
-                            target_sweetness=1.2 if "сух" in answers.get("sweetness", "").lower() else 3.0,
-                            target_body=4.5 if "плотн" in answers.get("body", "").lower() or "дуб" in answers.get("body_oak", "").lower() else 2.5,
-                        )
-                        final_candidates = ranked
-
-                    candidates_data = [
-                        c.model_dump(mode="json") if hasattr(c, "model_dump") else c
-                        for c in final_candidates
-                    ]
-
-                    # Фоновое сохранение вкусового профиля и сессии предпочтений пользователя в БД
-                    try:
-                        async with create_session() as session:
-                            taste_service = TasteProfileService(session)
-                            session_id = str(uuid.uuid4())
-                            recommended_slugs = [
-                                c.slug if hasattr(c, "slug") else c.get("slug")
-                                for c in final_candidates
-                                if (hasattr(c, "slug") and c.slug) or (isinstance(c, dict) and c.get("slug"))
-                            ]
-                            await taste_service.record_preferences_and_update_profile(
-                                user_id=user_id,
-                                session_id=session_id,
-                                raw_answers=answers,
-                                recommended_slugs=recommended_slugs,
-                            )
-                    except Exception as exc:
-                        logger.warning("Не удалось обновить вкусовой профиль пользователя %s: %s", user_id, exc)
-
-                    await websocket.send_json({
-                        "type": "completed",
-                        "message": "Превосходно! Ваш вкусовой профиль сформирован. Вот лучшие кандидаты по вашему вкусу:",
-                        "candidates": candidates_data,
-                        "registration_required": False,
-                    })
+                    # Для авторизованного пользователя: сразу выдаем подбор и сохраняем профиль
+                    await _finish_and_send_recommendations(user_id)
 
             # -----------------------------------------------------------------
             # 3. Healthcheck ping-pong

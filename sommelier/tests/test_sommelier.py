@@ -171,4 +171,48 @@ def test_sommelier_websocket_auth_message():
         assert resp.get("registration_required") is not True
 
 
+def test_sommelier_websocket_guest_onboarding_then_auth_flow():
+    """
+    Проверка сценария: гость проходит 5 вопросов онбординга, получает пейволл,
+    затем шлет {"type": "auth", "token": "..."}, и бэк сразу отдает completed с кандидатами.
+    """
+    client = TestClient(app)
+    user_id = uuid.uuid4()
+    token_pair = TokenService().create_token_pair(user_id)
+    token = token_pair.access_token
+
+    with client.websocket_connect("/ws/sommelier") as websocket:
+        welcome = websocket.receive_json()
+        assert welcome["type"] == "welcome"
+
+        # 1. Гость проходит все 5 вопросов
+        for step in range(1, 5):
+            websocket.send_json({"type": "answer", "step": step, "code": f"step_{step}", "answer": "val"})
+            next_step = websocket.receive_json()
+            assert next_step["type"] == "next_question"
+
+        websocket.send_json({"type": "answer", "step": 5, "code": "aromas", "answer": "Спелые ягоды"})
+        guest_completed = websocket.receive_json()
+        assert guest_completed["type"] == "completed"
+        assert guest_completed.get("registration_required") is True
+        assert guest_completed.get("candidates") == []
+
+        # 2. Пользователь регистрируется/входит и присылает токен авторизации
+        websocket.send_json({
+            "type": "auth",
+            "token": token,
+        })
+
+        # 3. Бэкенд подтверждает авторизацию
+        auth_resp = websocket.receive_json()
+        assert auth_resp["type"] == "auth_success"
+        assert auth_resp["user_id"] == str(user_id)
+
+        # 4. Бэкенд СРАЗУ отправляет событие completed с карточками candidates!
+        recs_resp = websocket.receive_json()
+        assert recs_resp["type"] == "completed"
+        assert recs_resp.get("registration_required") is False
+        assert len(recs_resp.get("candidates", [])) > 0
+
+
 
