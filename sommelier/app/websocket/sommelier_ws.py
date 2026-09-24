@@ -60,16 +60,20 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
         try:
             payload = token_service.decode_access_token(query_token)
             user_id = payload.sub
-            async with create_session() as session:
-                user_repo = UserRepository(session)
-                user = await user_repo.get_by_id(user_id)
-                if user:
-                    user_name = user.first_name or "пользователь"
-                    user_taste_profile = user.taste_profile or {}
-                    if user_taste_profile.get("preferred_categories") or user_taste_profile.get("sweetness_pref") is not None:
-                        has_taste_profile = True
         except Exception as e:
             logger.warning(f"Недействительный токен в query params WebSocket: {e}")
+        else:
+            try:
+                async with create_session() as session:
+                    user_repo = UserRepository(session)
+                    user = await user_repo.get_by_id(user_id)
+                    if user:
+                        user_name = user.first_name or "пользователь"
+                        user_taste_profile = user.taste_profile or {}
+                        if user_taste_profile.get("preferred_categories") or user_taste_profile.get("sweetness_pref") is not None:
+                            has_taste_profile = True
+            except Exception as db_exc:
+                logger.debug(f"БД недоступна при получении профиля вкуса в query auth: {db_exc}")
 
     answers: dict[str, str] = {}
     current_step = 1
@@ -194,6 +198,16 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                     try:
                         payload = token_service.decode_access_token(auth_token)
                         user_id = payload.sub
+                    except Exception as e:
+                        logger.warning(f"Ошибка декодирования токена WebSocket auth: {e}")
+                        await websocket.send_json({
+                            "type": "auth_error",
+                            "message": "Недействительный или истекший токен авторизации.",
+                        })
+                        continue
+
+                    # Обогащение профилем вкуса из БД (если база доступна)
+                    try:
                         async with create_session() as session:
                             user_repo = UserRepository(session)
                             u = await user_repo.get_by_id(user_id)
@@ -202,23 +216,19 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                                 user_taste_profile = u.taste_profile or {}
                                 if user_taste_profile.get("preferred_categories") or user_taste_profile.get("sweetness_pref") is not None:
                                     has_taste_profile = True
+                    except Exception as db_exc:
+                        logger.debug(f"БД недоступна при получении профиля вкуса в WebSocket auth: {db_exc}")
 
-                        await websocket.send_json({
-                            "type": "auth_success",
-                            "user_id": str(user_id),
-                            "message": "Успешная авторизация в сессии сомелье.",
-                            "has_taste_profile": has_taste_profile,
-                            "taste_profile": user_taste_profile,
-                        })
-                        # Если пользователь уже прошел 5 вопросов до авторизации — сразу отдаем рекомендации
-                        if onboarding_completed:
-                            await _finish_and_send_recommendations(user_id)
-                    except Exception as e:
-                        logger.warning(f"Ошибка WebSocket auth: {e}")
-                        await websocket.send_json({
-                            "type": "auth_error",
-                            "message": "Недействительный или истекший токен авторизации.",
-                        })
+                    await websocket.send_json({
+                        "type": "auth_success",
+                        "user_id": str(user_id),
+                        "message": "Успешная авторизация в сессии сомелье.",
+                        "has_taste_profile": has_taste_profile,
+                        "taste_profile": user_taste_profile,
+                    })
+                    # Если пользователь уже прошел 5 вопросов до авторизации — сразу отдаем рекомендации
+                    if onboarding_completed:
+                        await _finish_and_send_recommendations(user_id)
                 else:
                     await websocket.send_json({
                         "type": "auth_error",
