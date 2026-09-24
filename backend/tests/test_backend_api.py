@@ -513,6 +513,98 @@ def test_add_to_cellar_by_slug(client: TestClient):
         assert data["bottles_count"] == 2
 
 
+def test_update_cellar_item_patch(client: TestClient):
+    """Проверка PATCH /api/v1/users/cellar/{item_id} (смена статуса, оценка, заметка)."""
+    from application.services.auth_service import TokenService
+    from application.adapters.database.models.cellar import UserCellar, CellarStatus
+    from application.adapters.database.models.wine import Wine
+    from datetime import datetime, timezone
+
+    token_service = TokenService()
+    user_id = uuid.uuid4()
+    item_id = uuid.uuid4()
+    wine_id = uuid.uuid4()
+    tokens = token_service.create_token_pair(user_id)
+
+    mock_wine = Wine(
+        id=wine_id,
+        slug="fanagoria-cru",
+        name="Фанагория Крю",
+        category="Красное",
+    )
+    existing_item = UserCellar(
+        id=item_id,
+        user_id=user_id,
+        wine_id=wine_id,
+        status=CellarStatus.IN_CELLAR,
+        bottles_count=1,
+        personal_rating=None,
+        tasting_notes=None,
+        created_at=datetime.now(timezone.utc),
+    )
+    existing_item.wine = mock_wine
+
+    with patch("application.adapters.database.repositories.cellar_repo.CellarRepository.get_by_id", new_callable=AsyncMock) as mock_get_id, \
+         patch("application.adapters.database.repositories.cellar_repo.CellarRepository.get_by_user_and_wine", new_callable=AsyncMock) as mock_get_user_wine, \
+         patch("application.adapters.database.repositories.cellar_repo.CellarRepository.save", new_callable=AsyncMock) as mock_save:
+
+        mock_get_id.return_value = existing_item
+        mock_get_user_wine.return_value = None
+
+        patch_payload = {
+            "status": "tasted",
+            "personal_rating": 5,
+            "tasting_notes": "Потрясающий баланс танинов и ягодных нот!",
+            "bottles_count": 0,
+        }
+        resp = client.patch(
+            f"/api/v1/users/cellar/{item_id}",
+            json=patch_payload,
+            headers={"Authorization": f"Bearer {tokens.access_token}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["id"] == str(item_id)
+        assert data["status"] == "tasted"
+        assert data["personal_rating"] == 5
+        assert data["bottles_count"] == 0
+        assert data["tasting_notes"] == "Потрясающий баланс танинов и ягодных нот!"
+
+
+def test_get_wine_universal_by_uuid_and_slug(client: TestClient):
+    """Проверка универсального эндпоинта /api/v1/catalog/wines/{id_or_slug} по UUID и по слагу."""
+    from application.adapters.database.models.wine import Wine
+    from datetime import datetime, timezone
+
+    wine_id = uuid.uuid4()
+    wine_slug = "krasnostop-zolotovskiy-2020"
+    mock_wine = Wine(
+        id=wine_id,
+        slug=wine_slug,
+        name="Красностоп Золотовский",
+        category="Красное",
+        created_at=datetime.now(timezone.utc),
+    )
+
+    with patch("application.adapters.database.repositories.wine_repo.WineRepository.get_by_id", new_callable=AsyncMock) as mock_by_id, \
+         patch("application.adapters.database.repositories.wine_repo.WineRepository.get_by_slug", new_callable=AsyncMock) as mock_by_slug:
+
+        # 1. Запрос по UUID
+        mock_by_id.return_value = mock_wine
+        resp_uuid = client.get(f"/api/v1/catalog/wines/{wine_id}")
+        assert resp_uuid.status_code == 200
+        assert resp_uuid.json()["slug"] == wine_slug
+        assert resp_uuid.json()["id"] == str(wine_id)
+
+        # 2. Запрос по текстовому слагу
+        mock_by_id.return_value = None
+        mock_by_slug.return_value = mock_wine
+        resp_slug = client.get(f"/api/v1/catalog/wines/{wine_slug}")
+        assert resp_slug.status_code == 200
+        assert resp_slug.json()["slug"] == wine_slug
+        assert resp_slug.json()["id"] == str(wine_id)
+
+
 
 
 

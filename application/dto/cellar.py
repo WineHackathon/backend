@@ -18,6 +18,16 @@ class CellarItemCreateDTO(BaseModel):
     tasting_notes: str | None = None
 
 
+class CellarItemUpdateDTO(BaseModel):
+    """Запрос на частичное обновление позиции в погребе (PATCH)."""
+    status: CellarStatus | None = Field(default=None, description="Новый статус: in_cellar, wishlist, tasted")
+    bottles_count: int | None = Field(default=None, ge=0, description="Количество бутылок")
+    personal_rating: int | None = Field(default=None, ge=1, le=5, description="Личная оценка от 1 до 5")
+    tasting_notes: str | None = Field(default=None, description="Личные дегустационные заметки")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class CellarItemDTO(BaseModel):
     """Данные позиции в винном погребе."""
     id: uuid.UUID

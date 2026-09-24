@@ -9,7 +9,7 @@ from application.adapters.database.models.cellar import UserCellar, CellarStatus
 from application.adapters.database.repositories.cellar_repo import CellarRepository
 from application.adapters.database.repositories.wine_repo import WineRepository
 from application.adapters.database.transaction_manager import TransactionManager
-from application.dto.cellar import CellarItemDTO, CellarItemCreateDTO
+from application.dto.cellar import CellarItemDTO, CellarItemCreateDTO, CellarItemUpdateDTO
 from application.services.catalog_service import CatalogService
 from application.exceptions.domain_exceptions import WineNotFound, CellarItemNotFound
 
@@ -34,7 +34,7 @@ class CellarService:
             bottles_count=item.bottles_count,
             personal_rating=item.personal_rating,
             tasting_notes=item.tasting_notes,
-            created_at=item.created_at,
+            created_at=item.created_at or datetime.now(timezone.utc),
             wine=wine_dto,
         )
 
@@ -82,6 +82,55 @@ class CellarService:
             await self.cellar_repo.save(item)
 
         item.wine = wine
+        return self.to_dto(item)
+
+    async def update_item(
+        self,
+        user_id: uuid.UUID,
+        item_id: uuid.UUID,
+        dto: CellarItemUpdateDTO,
+    ) -> CellarItemDTO:
+        """Обновление позиции в личном погребе (статус, оценка, заметка, количество)."""
+        item = await self.cellar_repo.get_by_id(item_id)
+        if not item or item.user_id != user_id:
+            raise CellarItemNotFound()
+
+        async with self.tm:
+            # Если меняется статус позиции (например, из in_cellar в tasted)
+            if dto.status is not None and dto.status != item.status:
+                existing = await self.cellar_repo.get_by_user_and_wine(user_id, item.wine_id, dto.status)
+                if existing and existing.id != item.id:
+                    # Слияние с существующей позицией в новом статусе (защита от нарушения unique constraint)
+                    if dto.bottles_count is not None:
+                        existing.bottles_count = dto.bottles_count
+                    else:
+                        existing.bottles_count += item.bottles_count
+
+                    if dto.personal_rating is not None:
+                        existing.personal_rating = dto.personal_rating
+                    elif item.personal_rating is not None and existing.personal_rating is None:
+                        existing.personal_rating = item.personal_rating
+
+                    if dto.tasting_notes is not None:
+                        existing.tasting_notes = dto.tasting_notes
+                    elif item.tasting_notes is not None and not existing.tasting_notes:
+                        existing.tasting_notes = item.tasting_notes
+
+                    await self.cellar_repo.delete_item(user_id, item.id)
+                    await self.cellar_repo.save(existing)
+                    return self.to_dto(existing)
+                else:
+                    item.status = dto.status
+
+            if dto.bottles_count is not None:
+                item.bottles_count = dto.bottles_count
+            if dto.personal_rating is not None:
+                item.personal_rating = dto.personal_rating
+            if dto.tasting_notes is not None:
+                item.tasting_notes = dto.tasting_notes
+
+            await self.cellar_repo.save(item)
+
         return self.to_dto(item)
 
     async def remove_item(self, user_id: uuid.UUID, item_id: uuid.UUID) -> bool:

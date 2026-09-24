@@ -26,7 +26,7 @@ from .auth import (
     YandexAuthDTO,
     AuthResponseDTO,
 )
-from .cellar import CellarItemDTO, CellarItemCreateDTO, CellarDeleteResponseDTO
+from .cellar import CellarItemDTO, CellarItemCreateDTO, CellarItemUpdateDTO, CellarDeleteResponseDTO
 from .scan import EvaluationResponseDTO, ScanResultDTO, ScanHistoryItemDTO
 from .sommelier import (
     OnboardingQuestionDTO,
@@ -59,6 +59,7 @@ __all__ = [
     "AuthResponseDTO",
     "CellarItemDTO",
     "CellarItemCreateDTO",
+    "CellarItemUpdateDTO",
     "CellarDeleteResponseDTO",
     "EvaluationResponseDTO",
     "ScanResultDTO",

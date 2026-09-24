@@ -89,6 +89,25 @@ class CatalogService:
             raise WineNotFound(str(wine_id))
         return self.to_detail_dto(wine)
 
+    async def get_by_id_or_slug(self, id_or_slug: str) -> WineDetailDTO:
+        """Получение детальной карточки вина универсально: по UUID или слагу."""
+        wine = None
+        # 1. Если передан валидный UUID, сначала ищем по ID
+        try:
+            val_uuid = uuid.UUID(id_or_slug)
+            wine = await self.repo.get_by_id(val_uuid)
+        except (ValueError, AttributeError):
+            pass
+
+        # 2. Если по UUID не найдено или это текстовый слаг — ищем по slug
+        if not wine:
+            wine = await self.repo.get_by_slug(id_or_slug)
+
+        if not wine:
+            raise WineNotFound(id_or_slug)
+
+        return self.to_detail_dto(wine)
+
     async def list_wines(
         self,
         filter_dto: WineFilterDTO | None = None,

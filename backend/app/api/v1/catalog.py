@@ -11,12 +11,16 @@ from application.services.catalog_service import CatalogService
 router = APIRouter(prefix="/api/v1/catalog", tags=["Детали вина"])
 
 
-@router.get("/wines/{slug}", response_model=WineDetailDTO, summary="Получить подробную карточку вина по слагу")
-async def get_wine_by_slug(
-    slug: str,
+@router.get(
+    "/wines/{id_or_slug}",
+    response_model=WineDetailDTO,
+    summary="Получить подробную карточку вина по ID или слагу",
+)
+async def get_wine_by_id_or_slug(
+    id_or_slug: str,
     session: AsyncSession = Depends(get_session),
 ):
-    """Получение подробной карточки вина с дегустационными заметками и гастропарами."""
+    """Получение подробной карточки вина с дегустационными заметками и гастропарами (по UUID или слагу)."""
     service = CatalogService(session)
-    return await service.get_by_slug(slug)
+    return await service.get_by_id_or_slug(id_or_slug)
 

@@ -483,3 +483,74 @@ async def test_ml_and_redis_adapters():
     assert remaining == 4
     mock_redis.incr.assert_awaited_once_with("anon:scan:fp_test_2")
     mock_redis.expire.assert_awaited_once_with("anon:scan:fp_test_2", 3600)
+
+
+@pytest.mark.asyncio
+async def test_cellar_service_update_item():
+    """Проверка обновления и слияния позиций погреба в CellarService.update_item."""
+    from application.services.cellar_service import CellarService
+    from application.dto.cellar import CellarItemUpdateDTO
+    from application.adapters.database.models.cellar import UserCellar, CellarStatus
+    from application.exceptions.domain_exceptions import CellarItemNotFound
+
+    mock_session = AsyncMock()
+    service = CellarService(mock_session)
+
+    user_id = uuid.uuid4()
+    item_id = uuid.uuid4()
+    wine_id = uuid.uuid4()
+
+    item = UserCellar(
+        id=item_id,
+        user_id=user_id,
+        wine_id=wine_id,
+        status=CellarStatus.IN_CELLAR,
+        bottles_count=2,
+    )
+
+    # 1. Позиция не найдена
+    service.cellar_repo.get_by_id = AsyncMock(return_value=None)
+    with pytest.raises(CellarItemNotFound):
+        await service.update_item(user_id, item_id, CellarItemUpdateDTO(status=CellarStatus.TASTED))
+
+    # 2. Успешное простое обновление
+    service.cellar_repo.get_by_id = AsyncMock(return_value=item)
+    service.cellar_repo.get_by_user_and_wine = AsyncMock(return_value=None)
+    service.cellar_repo.save = AsyncMock()
+
+    dto = CellarItemUpdateDTO(
+        status=CellarStatus.TASTED,
+        bottles_count=1,
+        personal_rating=4,
+        tasting_notes="Мягкое послевкусие",
+    )
+    res = await service.update_item(user_id, item_id, dto)
+    assert res.status == CellarStatus.TASTED
+    assert res.bottles_count == 1
+    assert res.personal_rating == 4
+    assert res.tasting_notes == "Мягкое послевкусие"
+
+    # 3. Слияние при наличии существующей записи со статусом tasted
+    item_in_cellar = UserCellar(
+        id=item_id,
+        user_id=user_id,
+        wine_id=wine_id,
+        status=CellarStatus.IN_CELLAR,
+        bottles_count=2,
+    )
+    existing_tasted = UserCellar(
+        id=uuid.uuid4(),
+        user_id=user_id,
+        wine_id=wine_id,
+        status=CellarStatus.TASTED,
+        bottles_count=1,
+        personal_rating=5,
+    )
+    service.cellar_repo.get_by_id = AsyncMock(return_value=item_in_cellar)
+    service.cellar_repo.get_by_user_and_wine = AsyncMock(return_value=existing_tasted)
+    service.cellar_repo.delete_item = AsyncMock(return_value=True)
+
+    res_merged = await service.update_item(user_id, item_id, CellarItemUpdateDTO(status=CellarStatus.TASTED))
+    assert res_merged.id == existing_tasted.id
+    assert res_merged.status == CellarStatus.TASTED
+    service.cellar_repo.delete_item.assert_awaited_once_with(user_id, item_in_cellar.id)

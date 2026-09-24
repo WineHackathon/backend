@@ -8,7 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from application.adapters.database.db_session import get_session
 from application.adapters.database.models.cellar import CellarStatus
 from application.dto.user import UserDTO, UserPreferenceHistoryDTO
-from application.dto.cellar import CellarItemDTO, CellarItemCreateDTO, CellarDeleteResponseDTO
+from application.dto.cellar import (
+    CellarItemDTO,
+    CellarItemCreateDTO,
+    CellarItemUpdateDTO,
+    CellarDeleteResponseDTO,
+)
 from application.dto.scan import ScanHistoryItemDTO
 from application.dto.session import (
     UserSessionDTO,
@@ -54,6 +59,18 @@ async def add_to_my_cellar(
     """Добавление вина в погреб или вишлист."""
     service = CellarService(session)
     return await service.add_item(user_id, dto)
+
+
+@router.patch("/cellar/{item_id}", response_model=CellarItemDTO, summary="Обновить вино в погребе (статус, оценка, заметка)")
+async def update_my_cellar_item(
+    item_id: uuid.UUID,
+    dto: CellarItemUpdateDTO,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_session),
+):
+    """Обновление позиции в личном погребе (смена статуса на 'tasted', оценка, заметки, количество бутылок)."""
+    service = CellarService(session)
+    return await service.update_item(user_id, item_id, dto)
 
 
 @router.delete("/cellar/{item_id}", response_model=CellarDeleteResponseDTO, summary="Удалить вино из погреба")
