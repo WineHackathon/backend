@@ -22,14 +22,19 @@ logger = logging.getLogger("upload_to_s3")
 
 
 def get_s3_client(endpoint_url: str, access_key: str, secret_key: str, region: str):
-    """Инициализация клиента S3 с поддержкой custom endpoint (FirstVDS)."""
+    """Инициализация клиента S3 с поддержкой custom endpoint (FirstVDS Ceph)."""
     return boto3.client(
         "s3",
         endpoint_url=endpoint_url,
         aws_access_key_id=access_key,
         aws_secret_access_key=secret_key,
-        region_name=region,
-        config=Config(signature_version="s3v4", max_pool_connections=50),
+        region_name=region or "ru-central-1",
+        verify=False,
+        config=Config(
+            signature_version="s3",
+            s3={"addressing_style": "path"},
+            max_pool_connections=50,
+        ),
     )
 
 
