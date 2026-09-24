@@ -8,9 +8,11 @@ from application.adapters.database.models.user import User, UserRole
 from application.adapters.database.repositories.user_repo import UserRepository
 from application.adapters.database.repositories.scan_repo import ScanRepository
 from application.adapters.database.repositories.preference_repo import PreferenceRepository
+from application.adapters.database.repositories.wine_repo import WineRepository
 from application.adapters.database.transaction_manager import TransactionManager
 from application.dto.user import UserDTO, UserCreateDTO, UserPreferenceHistoryDTO
 from application.dto.scan import ScanHistoryItemDTO
+from application.services.catalog_service import CatalogService
 from application.exceptions.domain_exceptions import UserNotFound, UserAlreadyExists
 
 
@@ -92,9 +94,19 @@ class UserService:
         return self.to_dto(user)
 
     async def get_user_scans(self, user_id: uuid.UUID, limit: int = 20) -> list[ScanHistoryItemDTO]:
-        """Получение истории сканирований пользователя."""
+        """Получение истории сканирований пользователя с прикрепленными карточками вин."""
         repo = ScanRepository(self.session)
+        wine_repo = WineRepository(self.session)
         scans = await repo.get_user_scans(user_id, limit=limit)
+
+        slugs = [s.predicted_slug for s in scans if s.predicted_slug]
+        wines_map = {}
+        for slug in slugs:
+            if slug not in wines_map:
+                w = await wine_repo.get_by_slug(slug)
+                if w:
+                    wines_map[slug] = CatalogService.to_dto(w)
+
         return [
             ScanHistoryItemDTO(
                 id=s.id,
@@ -104,6 +116,7 @@ class UserService:
                 latency_ms=s.latency_ms,
                 status=s.status,
                 created_at=s.created_at,
+                wine=wines_map.get(s.predicted_slug) if s.predicted_slug else None,
             )
             for s in scans
         ]

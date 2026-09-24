@@ -40,16 +40,18 @@ class IntentExtractor:
         """
         t = text.lower()
 
-        # 1. Категория вина
-        category = None
+        # 1. Категория вина (явное упоминание пользователем)
+        explicit_category = None
         if "красн" in t:
-            category = "Красное"
+            explicit_category = "Красное"
         elif "бел" in t:
-            category = "Белое"
+            explicit_category = "Белое"
         elif "розов" in t:
-            category = "Розовое"
+            explicit_category = "Розовое"
         elif any(k in t for k in ("игрист", "шампан", "просекко", "кава", "брют", "спуманте")):
-            category = "Игристое"
+            explicit_category = "Игристое"
+
+        category = explicit_category
 
         # 2. Тип сахара
         sugar_type = None
@@ -121,6 +123,7 @@ class IntentExtractor:
 
         return WineSearchIntent(
             category=category,
+            explicit_category=explicit_category,
             sugar_type=sugar_type,
             food_pairing=food_pairing,
             grape_variety=grape,

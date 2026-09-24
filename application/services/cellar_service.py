@@ -56,6 +56,12 @@ class CellarService:
             raise WineNotFound(target)
 
         wine_id = wine.id
+        # Если добавляем в погреб (in_cellar), удаляем из вишлиста если оно там было
+        if dto.status == CellarStatus.IN_CELLAR or dto.status == "in_cellar":
+            wishlist_item = await self.cellar_repo.get_by_user_and_wine(user_id, wine_id, CellarStatus.WISHLIST)
+            if wishlist_item:
+                await self.cellar_repo.delete_item(user_id, wishlist_item.id)
+
         existing = await self.cellar_repo.get_by_user_and_wine(user_id, wine_id, dto.status)
         if existing:
             existing.bottles_count += dto.bottles_count

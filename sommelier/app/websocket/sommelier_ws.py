@@ -303,9 +303,9 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                             # 3. Интеллектуальный многокритериальный поиск по намерениям (Intent Extractor)
                             if not candidates:
                                 intent = await intent_extractor.extract_intent(user_text, llm_client)
-                                # Если в запросе не указана категория или сладость, учитываем вкусовой профиль пользователя
+                                # Если в запросе не указана категория явно, приоритет отдается вкусовому профилю пользователя
                                 if user_taste_profile:
-                                    if not intent.category and user_taste_profile.get("preferred_categories"):
+                                    if not getattr(intent, "explicit_category", None) and user_taste_profile.get("preferred_categories"):
                                         intent.category = user_taste_profile["preferred_categories"][0]
                                     if not intent.sugar_type and user_taste_profile.get("sweetness_pref") is not None:
                                         if user_taste_profile["sweetness_pref"] <= 1.8:
@@ -320,7 +320,13 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                 if user_taste_profile:
                     pref_parts = []
                     if user_taste_profile.get("preferred_categories"):
-                        pref_parts.append(f"Любимые категории: {', '.join(user_taste_profile['preferred_categories'])}")
+                        pref_cat = user_taste_profile['preferred_categories'][0]
+                        pref_parts.append(f"Любимая категория вина: {pref_cat}")
+                        if not getattr(intent, "explicit_category", None) and intent.food_pairing:
+                            pref_parts.append(
+                                f"Пользователь предпочитает {pref_cat} вино. "
+                                f"Обязательно обоснуйте, почему предложенные образцы {pref_cat} гармонируют с запрошенным блюдом (структура, кислотность, дуб, маслянистость)."
+                            )
                     if user_taste_profile.get("sweetness_pref") is not None:
                         pref_parts.append(f"Сладость: {user_taste_profile['sweetness_pref']}/5")
                     if user_taste_profile.get("body_pref") is not None:

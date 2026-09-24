@@ -25160,7 +25160,7 @@ INSERT INTO wines (
     vintage_year, price_rub, image_filename, image_s3_key, image_url,
     sweetness, body, acidity, oak, aroma_tags, flavor_tags, derived_attributes_confidence
 ) VALUES (
-    '8f475933-48ed-4151-a915-68546b500650', NOW(), NOW(), 'belbek-beloe-suhoe-kaberne-sovinon-krasnoe-14', 'Белое сухое', 'Красное', 'Темно-рубиновый с рыжеватым отблеском', 'Крым',
+    '8f475933-48ed-4151-a915-68546b500650', NOW(), NOW(), 'belbek-beloe-suhoe-kaberne-sovinon-krasnoe-14', 'Бельбек Каберне Совиньон', 'Красное', 'Темно-рубиновый с рыжеватым отблеском', 'Крым',
     '["Каберне Совиньон"]'::jsonb, 'Вкус: Богатый, насыщенный, со зрелыми танинами, гармоничной кислотностью и продолжительным послевкусием. Наполненный тонами черной смородины, сушеной вишни, горького шоколада и сладкой ванили.', 'Бельбек', 83.5, 'Сухое',
     NULL, NULL, 'belbek_beloe_suhoe_kaberne_sovinon_krasnoe_suhoe_14_82f8b0eda2.webp', 'catalog/belbek_beloe_suhoe_kaberne_sovinon_krasnoe_suhoe_14_82f8b0eda2.webp', 'https://firsts3.ru/wine-hack/catalog/belbek_beloe_suhoe_kaberne_sovinon_krasnoe_suhoe_14_82f8b0eda2.webp?AWSAccessKeyId=4TJ4OOLBHM05K7WSABIS&Signature=4yoK92Co%2FzuseTArM0%2F55mpT5lE%3D&Expires=2105632038',
     1.20, 4.50, 2.50, 4.20,
