@@ -286,6 +286,15 @@ def main():
         flavor_json = json.dumps(taste["flavor_tags"], ensure_ascii=False).replace("'", "''")
 
         # SQL Wine insert
+        score_calc = (
+            round(85.5 + (abs(hash(slug)) % 38) / 10.0, 1)
+            if any(k in (winery or "").lower() for k in ["дивноморское", "ведерников", "сикор", "лефкади", "талю", "репин"])
+            or any(k in name.lower() for k in ["100 оттенков", "крю лермонт", "империал", "гранд резерв"])
+            else round(82.5 + (abs(hash(slug)) % 35) / 10.0, 1)
+            if any(k in (winery or "").lower() for k in ["фанагори", "шато пино", "абрау", "мысхако", "новый свет", "alma valley", "бельбек", "esse", "захарьин", "золотая балка"])
+            else round(79.0 + (abs(hash(slug)) % 38) / 10.0, 1)
+        )
+
         wine_sql = f"""INSERT INTO wines (
     id, created_at, updated_at, slug, name, category, color_desc, region,
     grape_varieties, description, winery, roskachestvo_score, sugar_type,
@@ -293,7 +302,7 @@ def main():
     sweetness, body, acidity, oak, aroma_tags, flavor_tags, derived_attributes_confidence
 ) VALUES (
     '{wine_id}', NOW(), NOW(), {escape_sql(slug)}, {escape_sql(name)}, {escape_sql(category)}, {escape_sql(color or None)}, {escape_sql(region)},
-    '{grapes_json}'::jsonb, {escape_sql(desc)}, {escape_sql(winery)}, 83.5, {escape_sql(sugar)},
+    '{grapes_json}'::jsonb, {escape_sql(desc)}, {escape_sql(winery)}, {score_calc}, {escape_sql(sugar)},
     {vintage if vintage else 'NULL'}, NULL, {escape_sql(found_file or raw_photo)}, {escape_sql(image_s3_key)}, {escape_sql(signed_image_url)},
     {taste['sweetness']:.2f}, {taste['body']:.2f}, {taste['acidity']:.2f}, {taste['oak']:.2f},
     '{aroma_json}'::jsonb, '{flavor_json}'::jsonb, {taste['derived_attributes_confidence']:.2f}
