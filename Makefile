@@ -28,7 +28,7 @@ test:
 	@PYTHONPATH=. pytest -v
 
 seed:
-	@docker exec wine_backend python -m infrastructure.scripts.seed_wines --csv-path /app/infrastructure/data/catalog.csv
+	@docker exec -i wine_postgres psql -U wine_admin -d wine_db < infrastructure/data/seed_wines.sql
 
 logs:
 	@docker compose -f infrastructure/docker-compose.yml logs -f

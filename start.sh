@@ -50,8 +50,8 @@ echo -e "${CYAN}📦 Проверка каталога вин в базе дан
 WINE_COUNT=$(docker exec wine_postgres psql -U wine_admin -d wine_db -t -c "SELECT COUNT(*) FROM wines;" 2>/dev/null | tr -d ' ' || echo "0")
 
 if [ "$WINE_COUNT" -eq 0 ] 2>/dev/null || [ -z "$WINE_COUNT" ]; then
-    echo -e "${YELLOW}⚡ База данных пуста. Запускаем сидирование каталога (2 103 вина)...${NC}"
-    docker exec wine_backend python -m infrastructure.scripts.seed_wines --csv-path /app/infrastructure/data/catalog.csv || true
+    echo -e "${YELLOW}⚡ База данных пуста. Запускаем сидирование каталога (2 103 вина, матрица вкуса, S3 фото)...${NC}"
+    docker exec -i wine_postgres psql -U wine_admin -d wine_db < infrastructure/data/seed_wines.sql || true
     echo -e "${GREEN}✅ Каталог успешно загружен в PostgreSQL!${NC}"
 else
     echo -e "${GREEN}✅ В базе уже загружено $WINE_COUNT вин.${NC}"

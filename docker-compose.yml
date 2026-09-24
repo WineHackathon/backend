@@ -1,0 +1,4 @@
+name: wine_platform
+
+include:
+  - path: infrastructure/docker-compose.yml

@@ -75,26 +75,36 @@ $$Score = (1 - \text{dist}_{4D}) \times 0.5 + \text{Jaccard}(\text{aromas}) \tim
 
 ## 🚀 Быстрый старт (Quick Start)
 
-### 1. Запуск через Docker Compose
+### 1. Запуск в один клик
 ```bash
 # Клонирование и переход в проект
 git clone https://github.com/WineHackathon/backend.git
 cd backend
 
-# Запуск инфраструктуры (PostgreSQL, Redis, Backend, Sommelier, Nginx)
-docker compose -f infrastructure/docker-compose.yml up -d
+# Настройка окружения
+cp .env.example .env
+# (Укажите ваш LLM_API_KEY в .env)
+
+# Единая команда запуска (проверит Docker, поднимет контейнеры и автоматически зальет базу вин)
+./start.sh
+# или через Make:
+make up
 ```
 
 ### 2. Доступ к сервисам
-- **Интерактивная Swagger-документация**: [http://localhost:8080/docs](http://localhost:8080/docs)
+- **Интерактивная Swagger-документация**: [http://localhost:8080/docs](http://localhost:8080/docs) (или `:8050/docs`)
+- **Интерактивный UI тестер сомелье**: [http://localhost:8080/ws/test](http://localhost:8080/ws/test)
 - **Чекер хакатона**: `POST http://localhost:8080/v1/eval/predict`
 - **Каталог вин**: `GET http://localhost:8080/api/v1/catalog/wines`
 - **Онбординг сомелье**: `GET http://localhost:8080/api/v1/sommelier/onboarding/questions`
-- **WebSocket сомелье**: `ws://localhost:8080/ws/sommelier`
+- **WebSocket AI-Сомелье**: `ws://localhost:8080/ws/sommelier`
 
-### 3. Наполнение базы данных (2 103 вина)
+### 3. Ручное наполнение базы данных (если требуется повторно)
+В контейнер PostgreSQL уже смонтирован готовый дамп `seed_wines.sql` (2 103 вина с 4D-матрицей вкуса, тегами ароматов/вкусов, гастропарами и подписанными S3 URL):
 ```bash
-docker exec wine_backend python -m infrastructure.scripts.seed_wines --csv-path /app/infrastructure/data/catalog.csv
+make seed
+# или напрямую через psql:
+docker exec -i wine_postgres psql -U wine_admin -d wine_db < infrastructure/data/seed_wines.sql
 ```
 
 ---
