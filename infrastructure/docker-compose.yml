@@ -49,6 +49,8 @@ services:
       dockerfile: backend/Dockerfile
     container_name: wine_backend
     restart: unless-stopped
+    env_file:
+      - ../.env
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
