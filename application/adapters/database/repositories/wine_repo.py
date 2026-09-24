@@ -125,6 +125,25 @@ class WineRepository:
         res = await self.session.execute(stmt)
         return res.scalars().all(), total
 
+    @staticmethod
+    def _is_sparkling_category(category: str | None) -> bool:
+        if not category:
+            return False
+        cat = category.lower().strip()
+        return "игрист" in cat or "шампан" in cat
+
+    @staticmethod
+    def _sparkling_condition():
+        return or_(
+            Wine.category == "Игристое",
+            Wine.sugar_type.in_(["Брют", "Экстра брют"]),
+            func.lower(Wine.name).like("%игрист%"),
+            func.lower(Wine.name).like("%брют%"),
+            func.lower(Wine.name).like("%шампан%"),
+            func.lower(Wine.description).like("%игристое вино%"),
+            func.lower(Wine.description).like("%игристых вин%"),
+        )
+
     def _build_catalog_filters(
         self,
         category: str | None = None,
@@ -137,8 +156,11 @@ class WineRepository:
         """Построение условий фильтрации для каталога (ANSI SQL, без ворнингов IDE)."""
         filters = []
         if category:
-            escaped = escape_like_pattern(category).lower()
-            filters.append(func.lower(Wine.category).like(f"%{escaped}%", escape="\\"))
+            if self._is_sparkling_category(category):
+                filters.append(self._sparkling_condition())
+            else:
+                escaped = escape_like_pattern(category).lower()
+                filters.append(func.lower(Wine.category).like(f"%{escaped}%", escape="\\"))
         if region:
             escaped = escape_like_pattern(region).lower()
             filters.append(func.lower(Wine.region).like(f"%{escaped}%", escape="\\"))
@@ -191,8 +213,11 @@ class WineRepository:
         """
         stmt = select(Wine).options(selectinload(Wine.pairings))
         if category:
-            escaped = escape_like_pattern(category).lower()
-            stmt = stmt.where(func.lower(Wine.category).like(f"%{escaped}%", escape="\\"))
+            if self._is_sparkling_category(category):
+                stmt = stmt.where(self._sparkling_condition())
+            else:
+                escaped = escape_like_pattern(category).lower()
+                stmt = stmt.where(func.lower(Wine.category).like(f"%{escaped}%", escape="\\"))
 
         stmt = (
             stmt.where(
@@ -282,11 +307,22 @@ class WineRepository:
         filters = []
 
         if intent.category:
-            filters.append(Wine.category == intent.category)
+            if self._is_sparkling_category(intent.category):
+                filters.append(self._sparkling_condition())
+            else:
+                filters.append(Wine.category == intent.category)
 
         if intent.sugar_type:
             escaped_sugar = escape_like_pattern(intent.sugar_type).lower()
-            filters.append(func.lower(Wine.sugar_type).like(f"%{escaped_sugar}%", escape="\\"))
+            if "брют" in escaped_sugar:
+                filters.append(
+                    or_(
+                        func.lower(Wine.sugar_type).like(f"%{escaped_sugar}%", escape="\\"),
+                        func.lower(Wine.name).like(f"%{escaped_sugar}%", escape="\\"),
+                    )
+                )
+            else:
+                filters.append(func.lower(Wine.sugar_type).like(f"%{escaped_sugar}%", escape="\\"))
 
         if intent.region:
             escaped_reg = escape_like_pattern(intent.region).lower()
@@ -354,8 +390,11 @@ class WineRepository:
             .limit(limit)
         )
         if category:
-            escaped_cat = escape_like_pattern(category).lower()
-            stmt = stmt.where(func.lower(Wine.category).like(f"%{escaped_cat}%", escape="\\"))
+            if self._is_sparkling_category(category):
+                stmt = stmt.where(self._sparkling_condition())
+            else:
+                escaped_cat = escape_like_pattern(category).lower()
+                stmt = stmt.where(func.lower(Wine.category).like(f"%{escaped_cat}%", escape="\\"))
 
         res = await self.session.execute(stmt)
         wines = list(res.scalars().all())

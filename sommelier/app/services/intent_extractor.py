@@ -42,20 +42,26 @@ class IntentExtractor:
 
         # 1. Категория вина (явное упоминание пользователем)
         explicit_category = None
-        if "красн" in t:
+        if any(k in t for k in ("игрист", "шампан", "просекко", "prosecco", "кава", "cava", "брют", "brut", "спуманте", "spumante", "петнат", "petnat", "frizzante", "фриззанте")):
+            explicit_category = "Игристое"
+        elif "красн" in t:
             explicit_category = "Красное"
-        elif "бел" in t:
-            explicit_category = "Белое"
         elif "розов" in t:
             explicit_category = "Розовое"
-        elif any(k in t for k in ("игрист", "шампан", "просекко", "кава", "брют", "спуманте")):
-            explicit_category = "Игристое"
+        elif "оранж" in t:
+            explicit_category = "Оранжевое"
+        elif "бел" in t:
+            explicit_category = "Белое"
 
         category = explicit_category
 
         # 2. Тип сахара
         sugar_type = None
-        if "полусух" in t:
+        if "экстра брют" in t or "extra brut" in t:
+            sugar_type = "Экстра брют"
+        elif "брют" in t or "brut" in t:
+            sugar_type = "Брют"
+        elif "полусух" in t:
             sugar_type = "Полусухое"
         elif "сух" in t:
             sugar_type = "Сухое"

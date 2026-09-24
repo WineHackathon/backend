@@ -106,6 +106,12 @@ async def seed_data(csv_path: str) -> None:
                 continue
 
             sugar = determine_sugar_type(name, category, desc)
+            if (
+                sugar in ("Брют", "Экстра брют")
+                or any(k in f"{name} {desc or ''}".lower() for k in ("игрист", "брют", "brut", "шампан", "просекко", "prosecco", "спуманте", "spumante", "петнат", "petnat", "frizzante", "sparkling"))
+            ):
+                category = "Игристое"
+
             vintage = extract_vintage_year(name)
             grapes = parse_grape_varieties(raw_grapes)
 
@@ -114,6 +120,7 @@ async def seed_data(csv_path: str) -> None:
                 category=category or color,
                 sugar_type=sugar,
                 description=desc,
+                name=name,
             )
 
             wine = Wine(

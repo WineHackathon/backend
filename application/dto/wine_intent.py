@@ -7,9 +7,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class WineSearchIntent(BaseModel):
     """Структурированные намерения и фильтры, извлеченные из запроса пользователя."""
-    category: Literal["Красное", "Белое", "Розовое", "Игристое"] | None = None
-    explicit_category: Literal["Красное", "Белое", "Розовое", "Игристое"] | None = None
-    sugar_type: Literal["Сухое", "Полусухое", "Полусладкое", "Сладкое"] | None = None
+    category: Literal["Красное", "Белое", "Розовое", "Оранжевое", "Игристое"] | None = None
+    explicit_category: Literal["Красное", "Белое", "Розовое", "Оранжевое", "Игристое"] | None = None
+    sugar_type: Literal["Сухое", "Полусухое", "Полусладкое", "Сладкое", "Брют", "Экстра брют"] | None = None
     food_pairing: str | None = None
     grape_variety: str | None = None
     region: str | None = None
