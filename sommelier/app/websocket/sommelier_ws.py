@@ -237,9 +237,9 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                 continue
 
             # -----------------------------------------------------------------
-            # 0.1 Явный перезапуск онбординга пользователем (type: "start_onboarding")
+            # 0.1 Явный перезапуск онбординга пользователем (type: "start_onboarding", "reset")
             # -----------------------------------------------------------------
-            if msg_type == "start_onboarding":
+            if msg_type in ("start_onboarding", "reset") or (msg_type == "answer" and data.get("reset")):
                 answers.clear()
                 current_step = 1
                 onboarding_completed = False
