@@ -69,7 +69,23 @@ def get_food_pairings(category: str, color: str, sugar: str, body: float, acidit
             })
 
     elif "бел" in cat_lower or "бел" in color_lower:
-        if acidity >= 4.0:
+        if oak >= 3.0 or body >= 3.2:
+            pairings.append({
+                "food_category": "Птица",
+                "dish_name": "Цыпленок или индейка в сливочно-грибном соусе",
+                "recommendation_reason": "Выдержка в дубе и маслянистая текстура вина гармонично сочетаются с насыщенными сливочными блюдами из птицы."
+            })
+            pairings.append({
+                "food_category": "Рыба",
+                "dish_name": "Стейк из лосося или форели на гриле",
+                "recommendation_reason": "Плотная текстура жирной рыбы требует округлого белого вина с хорошим телом и деликатным дубом."
+            })
+            pairings.append({
+                "food_category": "Сыры",
+                "dish_name": "Мягкие сыры с белой плесенью (Камамбер, Бри)",
+                "recommendation_reason": "Сливочные сыры подчеркивают ванильные и ореховые тона бочковой выдержки."
+            })
+        elif acidity >= 4.0:
             pairings.append({
                 "food_category": "Морепродукты",
                 "dish_name": "Свежие черноморские устрицы и гребешки",
@@ -84,7 +100,7 @@ def get_food_pairings(category: str, color: str, sugar: str, body: float, acidit
             pairings.append({
                 "food_category": "Птица",
                 "dish_name": "Цыпленок в сливочно-чесночном соусе",
-                "recommendation_reason": "Округлая маслянистая текстура вина гармонирует со сливочными соусами."
+                "recommendation_reason": "Округлая текстура вина гармонирует со сливочными соусами."
             })
             pairings.append({
                 "food_category": "Сыры",
@@ -251,7 +267,7 @@ def main():
         sugar = determine_sugar_type(name, category, desc)
         vintage = extract_vintage_year(name)
         grapes = parse_grape_varieties(raw_grapes)
-        taste = extract_taste_matrix(category=category or color, sugar_type=sugar, description=desc)
+        taste = extract_taste_matrix(category=category or color, sugar_type=sugar, description=desc, name=name)
 
         # 4. Расчет гастропар
         pairings = get_food_pairings(
