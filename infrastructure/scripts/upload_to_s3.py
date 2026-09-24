@@ -20,18 +20,30 @@ from botocore.exceptions import ClientError
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("upload_to_s3")
 
+import urllib3
+urllib3.disable_warnings()
+
 
 def get_s3_client(endpoint_url: str, access_key: str, secret_key: str, region: str):
-    """Инициализация клиента S3 с поддержкой custom endpoint (FirstVDS Ceph)."""
+    """Инициализация клиента S3 с автоматическим DNS-фоллбэком на IP FirstVDS Ceph (37.46.135.136)."""
+    # Если на локальной машине s3.firstvds.ru не резолвится через публичные DNS, переключаем на прямой IP кластера Ceph
+    target_endpoint = endpoint_url
+    if "s3.firstvds.ru" in endpoint_url:
+        import socket
+        try:
+            socket.gethostbyname("s3.firstvds.ru")
+        except socket.gaierror:
+            target_endpoint = endpoint_url.replace("s3.firstvds.ru", "37.46.135.136").replace(":443", "")
+
     return boto3.client(
         "s3",
-        endpoint_url=endpoint_url,
+        endpoint_url=target_endpoint,
         aws_access_key_id=access_key,
         aws_secret_access_key=secret_key,
         region_name=region or "ru-central-1",
         verify=False,
         config=Config(
-            signature_version="s3",
+            signature_version="s3v4",
             s3={"addressing_style": "path"},
             max_pool_connections=50,
         ),
@@ -76,6 +88,7 @@ def upload_images(
     region: str,
     prefix: str = "catalog",
     max_workers: int = 16,
+    limit: int | None = None,
 ) -> None:
     source = Path(source_path)
     if not source.exists():
@@ -111,6 +124,9 @@ def upload_images(
         p for p in images_dir.rglob("*")
         if p.is_file() and p.suffix.lower() in valid_extensions and not p.name.startswith(".")
     ]
+
+    if limit and limit > 0:
+        files_to_upload = files_to_upload[:limit]
 
     total_files = len(files_to_upload)
     logger.info(f"Найдено {total_files} изображений для загрузки в s3://{bucket}/{prefix}/")
@@ -151,6 +167,12 @@ def upload_images(
 
 
 def main():
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+
     parser = argparse.ArgumentParser(description="Загрузка фотографий вин в S3 хранилище")
     parser.add_argument(
         "--source",
@@ -194,6 +216,13 @@ def main():
         help="Регион S3",
     )
 
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Максимальное количество файлов для загрузки (для теста)",
+    )
+
     args = parser.parse_args()
 
     if not args.access_key or not args.secret_key:
@@ -209,6 +238,7 @@ def main():
         region=args.region,
         prefix=args.prefix,
         max_workers=args.workers,
+        limit=args.limit,
     )
 
 
