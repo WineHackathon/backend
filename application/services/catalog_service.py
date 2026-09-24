@@ -48,6 +48,21 @@ class CatalogService:
         return round(79.0 + (h % 38) / 10.0, 1)
 
     @classmethod
+    def _clean_image_url(cls, wine: Wine) -> str | None:
+        """Формирование чистого публичного URL без подписи (бакет публичный)."""
+        url = getattr(wine, "image_url", None)
+        if url:
+            clean_url = url.split("?")[0]
+            if clean_url.startswith("http://") or clean_url.startswith("https://"):
+                return clean_url
+        if wine.image_s3_key:
+            key = wine.image_s3_key.lstrip("/")
+            return f"https://firsts3.ru/wine-hack/{key}"
+        if wine.image_filename:
+            return f"https://firsts3.ru/wine-hack/catalog/{wine.image_filename.lstrip('/')}"
+        return None
+
+    @classmethod
     def to_dto(cls, wine: Wine) -> WineDTO:
         """Преобразование модели Wine в компактный WineDTO."""
         return WineDTO(
@@ -63,14 +78,7 @@ class CatalogService:
             sugar_type=wine.sugar_type,
             price_rub=wine.price_rub,
             image_s3_key=wine.image_s3_key,
-            image_url=(
-                getattr(wine, "image_url", None)
-                or (
-                    (f"/s3/{wine.image_s3_key.lstrip('/')}" if wine.image_s3_key.lstrip("/").startswith("catalog/") else f"/s3/catalog/{wine.image_s3_key.lstrip('/')}")
-                    if wine.image_s3_key
-                    else None
-                )
-            ),
+            image_url=cls._clean_image_url(wine),
             sweetness=wine.sweetness,
             body=wine.body,
             acidity=wine.acidity,
