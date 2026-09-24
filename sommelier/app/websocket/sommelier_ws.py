@@ -82,6 +82,7 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
 
     async def _finish_and_send_recommendations(target_user_id: uuid.UUID) -> None:
         """Подбор вин по вкусовой матрице, сохранение профиля в БД и отправка события completed."""
+        nonlocal user_taste_profile, has_taste_profile
         final_candidates = []
         async with _get_catalog_service() as catalog_service:
             if catalog_service:
@@ -141,14 +142,25 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                     for c in final_candidates
                     if (hasattr(c, "slug") and c.slug) or (isinstance(c, dict) and c.get("slug"))
                 ]
-                await taste_service.record_preferences_and_update_profile(
+                updated_profile = await taste_service.record_preferences_and_update_profile(
                     user_id=target_user_id,
                     session_id=session_id,
                     raw_answers=answers,
                     recommended_slugs=recommended_slugs,
                 )
+                if updated_profile:
+                    user_taste_profile = updated_profile.model_dump(mode="json") if hasattr(updated_profile, "model_dump") else dict(updated_profile)
+                    has_taste_profile = True
         except Exception as exc:
             logger.warning("Не удалось обновить вкусовой профиль пользователя %s: %s", target_user_id, exc)
+
+        if answers.get("category"):
+            if not user_taste_profile:
+                user_taste_profile = {}
+            user_taste_profile["preferred_categories"] = [answers["category"]] + [
+                c for c in user_taste_profile.get("preferred_categories", []) if c != answers["category"]
+            ]
+            has_taste_profile = True
 
         await websocket.send_json({
             "type": "completed",
@@ -304,12 +316,17 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                             if not candidates:
                                 intent = await intent_extractor.extract_intent(user_text, llm_client)
                                 # Если в запросе не указана категория явно, приоритет отдается вкусовому профилю пользователя
-                                if user_taste_profile:
-                                    if not getattr(intent, "explicit_category", None) and user_taste_profile.get("preferred_categories"):
-                                        intent.category = user_taste_profile["preferred_categories"][0]
-                                    if not intent.sugar_type and user_taste_profile.get("sweetness_pref") is not None:
-                                        if user_taste_profile["sweetness_pref"] <= 1.8:
-                                            intent.sugar_type = "Сухое"
+                                active_cat = (
+                                    user_taste_profile.get("preferred_categories", [None])[0]
+                                    if user_taste_profile and user_taste_profile.get("preferred_categories")
+                                    else answers.get("category")
+                                )
+                                if active_cat and not getattr(intent, "explicit_category", None):
+                                    intent.category = active_cat
+
+                                if not intent.sugar_type and user_taste_profile.get("sweetness_pref") is not None:
+                                    if user_taste_profile["sweetness_pref"] <= 1.8:
+                                        intent.sugar_type = "Сухое"
                                 candidates = await catalog_service.recommend_wines_by_intent(intent, limit=3)
 
                         except Exception as exc:
@@ -317,15 +334,19 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
 
                 # Формируем системный контекст для LLM (RAG)
                 system_prompt = rag_service.build_system_prompt(context_wine=context_wine_dict)
-                if user_taste_profile:
+                active_pref_cat = (
+                    user_taste_profile.get("preferred_categories", [None])[0]
+                    if user_taste_profile and user_taste_profile.get("preferred_categories")
+                    else answers.get("category")
+                )
+                if user_taste_profile or active_pref_cat:
                     pref_parts = []
-                    if user_taste_profile.get("preferred_categories"):
-                        pref_cat = user_taste_profile['preferred_categories'][0]
-                        pref_parts.append(f"Любимая категория вина: {pref_cat}")
-                        if not getattr(intent, "explicit_category", None) and intent.food_pairing:
+                    if active_pref_cat:
+                        pref_parts.append(f"Любимая категория вина: {active_pref_cat}")
+                        if not getattr(intent, "explicit_category", None):
                             pref_parts.append(
-                                f"Пользователь предпочитает {pref_cat} вино. "
-                                f"Обязательно обоснуйте, почему предложенные образцы {pref_cat} гармонируют с запрошенным блюдом (структура, кислотность, дуб, маслянистость)."
+                                f"Пользователь предпочитает исключительно {active_pref_cat} вино. "
+                                f"Вы ОБЯЗАНЫ рекомендовать только {active_pref_cat} вино и пояснить, почему именно {active_pref_cat} образцы гармонируют с запросом."
                             )
                     if user_taste_profile.get("sweetness_pref") is not None:
                         pref_parts.append(f"Сладость: {user_taste_profile['sweetness_pref']}/5")

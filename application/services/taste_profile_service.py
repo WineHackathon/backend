@@ -106,18 +106,21 @@ class TasteProfileService:
         current_profile: dict[str, Any] = user.taste_profile or {}
         raw_answers: dict[str, Any] = dto.raw_answers or {}
 
-        # 1. Предпочитаемые категории
+        # 1. Предпочитаемые категории (новый выбор пользователя всегда имеет наивысший приоритет)
         preferred_cats: list[str] = list(current_profile.get("preferred_categories", []))
         cat_ans = raw_answers.get("category")
         if isinstance(cat_ans, list):
-            for c in cat_ans:
+            for c in reversed(cat_ans):
                 c_str = str(c).strip()
-                if c_str and c_str not in preferred_cats:
-                    preferred_cats.append(c_str)
+                if c_str:
+                    if c_str in preferred_cats:
+                        preferred_cats.remove(c_str)
+                    preferred_cats.insert(0, c_str)
         elif isinstance(cat_ans, str) and cat_ans.strip():
             c_str = cat_ans.strip()
-            if c_str not in preferred_cats:
-                preferred_cats.append(c_str)
+            if c_str in preferred_cats:
+                preferred_cats.remove(c_str)
+            preferred_cats.insert(0, c_str)
 
         # 2. Сладость (1.0 - 5.0)
         new_sweetness = _parse_scale_value(
