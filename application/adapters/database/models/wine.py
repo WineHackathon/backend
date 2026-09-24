@@ -97,6 +97,11 @@ class Wine(Base, UUIDMixin, TimestampMixin):
         nullable=True,
         comment="Ключ объекта фотографии в S3-хранилище (wine-catalog)",
     )
+    image_url: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Прямая подписанная ссылка на фотографию в S3",
+    )
 
     # =========================================================================
     # Вкусовая матрица (Taste Matrix)
