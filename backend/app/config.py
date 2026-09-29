@@ -56,8 +56,29 @@ class Settings(BaseSettings):
     sommelier_service_url: str = "http://sommelier:8001"
     ml_service_url: str = "http://ml:8002"
 
-    # ML Dispatcher Mock Mode (fallback for local dev/frontend without heavy ML worker)
-    ml_mock_mode: bool = True
+    # ML Recognition API Configuration (H100 / Tuna Ingress)
+    ml_api_url: str = Field(
+        default="https://akcizny-sbor.ru.tuna.am",
+        validation_alias=AliasChoices("ML_API_URL", "WINE_ML_API_URL"),
+    )
+    ml_api_token: str = Field(
+        default="",
+        validation_alias=AliasChoices("ML_API_TOKEN", "WINE_ML_API_TOKEN"),
+    )
+    ml_api_timeout: float = Field(
+        default=12.0,
+        validation_alias=AliasChoices("ML_API_TIMEOUT", "WINE_ML_API_TIMEOUT"),
+    )
+    # ML Dispatcher Mock Mode (force mock without calling ML API)
+    ml_mock_mode: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("ML_MOCK_MODE"),
+    )
+    # Fallback to mock on ML API failure / network outage
+    ml_fallback_to_mock: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("ML_FALLBACK_TO_MOCK"),
+    )
 
     # Yandex ID OAuth 2.0
     yandex_client_id: str = ""

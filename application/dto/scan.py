@@ -1,6 +1,7 @@
 """
 DTO схемы для процесса сканирования этикеток и чекера хакатона.
 """
+from typing import Any
 import uuid
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
@@ -23,6 +24,7 @@ class ScanResultDTO(BaseModel):
     confidence: float | None = None
     latency_ms: int | None = None
     wine: WineDTO | None = None
+    top5: list[dict[str, Any]] | None = Field(default=None, description="Топ-5 кандидатов от ML-модели")
     remaining_scans: int | None = Field(default=None, description="Оставшееся число бесплатных сканирований")
     registration_required: bool = Field(default=False, description="Требуется ли регистрация для продолжения")
 

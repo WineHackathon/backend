@@ -81,7 +81,9 @@ async def scan_wine_label(
 
     # 2. Инференс модели
     image_id = str(uuid.uuid4())
-    predicted_slug, confidence, latency_ms = await ml_dispatcher.predict(image_bytes, image_id=image_id)
+    ml_result = await ml_dispatcher.predict(image_bytes, image_id=image_id)
+    predicted_slug, confidence, latency_ms = ml_result
+    top5 = getattr(ml_result, "top5", None)
 
     # 3. Делегирование в ScanService (поиск карточки и сохранение истории)
     scan_service = ScanService(session)
@@ -102,6 +104,7 @@ async def scan_wine_label(
         confidence=confidence,
         latency_ms=latency_ms,
         wine=wine_dto,
+        top5=top5,
         remaining_scans=remaining_scans,
         registration_required=registration_required,
     )

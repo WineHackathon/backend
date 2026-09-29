@@ -9,6 +9,7 @@ import io
 import uuid
 from unittest.mock import AsyncMock, patch, MagicMock
 import pytest
+import httpx
 from fastapi.testclient import TestClient
 
 from backend.app.main import app
@@ -346,12 +347,120 @@ def test_register_with_device_fingerprint(client: TestClient):
 async def test_ml_dispatcher_mock_mode():
     """Проверка работы MLDispatcher в режиме mock_mode при отсутствии внешнего воркера."""
     from application.adapters.ml.ml_dispatcher import MLDispatcher
-    dispatcher = MLDispatcher(redis_client=None)
+    dispatcher = MLDispatcher(redis_client=None, mock_mode=True)
 
     slug, confidence, latency_ms = await dispatcher.predict(b"fake_image_bytes")
     assert slug == "fanagoriya-100-ottenkov-krasnogo-kaberne-kaberne-sovinon-krasnoe-suhoe-135"
     assert confidence == 0.94
     assert latency_ms >= 0
+
+
+@pytest.mark.asyncio
+async def test_ml_dispatcher_http_success():
+    """Проверка успешного инференса через внешний HTTP ML-сервис (H100/Tuna)."""
+    from application.adapters.ml.ml_dispatcher import MLDispatcher
+
+    mock_response_data = {
+        "status": "provisional_candidate",
+        "slug": "usadba-mezyb-shishka-pino-nuar-rozovoe-suhoe-115",
+        "confidence": None,
+        "raw_scores": {"visual_cosine": 0.768, "reranker": 0.626},
+        "card": {"name": "Шишка. Пино Нуар", "producer": "Усадьба Мезыбь"},
+        "top5": [
+            {
+                "slug": "usadba-mezyb-shishka-pino-nuar-rozovoe-suhoe-115",
+                "score": 0.768,
+                "reranker_score": 0.626,
+            },
+            {
+                "slug": "pino-nuar-dzhavaga",
+                "score": 0.746,
+                "reranker_score": 0.617,
+            },
+        ],
+    }
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = mock_response_data
+
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+        mock_post.return_value = mock_resp
+        dispatcher = MLDispatcher(
+            mock_mode=False,
+            api_url="https://akcizny-sbor.ru.tuna.am",
+            api_token="test-token",
+        )
+        result = await dispatcher.predict(b"fake_jpg_bytes")
+
+        # Проверка распаковки кортежа
+        slug, confidence, latency_ms = result
+        assert slug == "usadba-mezyb-shishka-pino-nuar-rozovoe-suhoe-115"
+        assert confidence == 0.626
+        assert latency_ms >= 0
+
+        # Проверка доступа к top5 и card
+        assert len(result.top5) == 2
+        assert result.card["name"] == "Шишка. Пино Нуар"
+
+        # Проверка отправленных параметров
+        mock_post.assert_called_once()
+        args, kwargs = mock_post.call_args
+        assert args[0] == "https://akcizny-sbor.ru.tuna.am/v1/recognize"
+        assert kwargs["headers"]["X-Token"] == "test-token"
+        assert "image" in kwargs["files"]
+
+
+@pytest.mark.asyncio
+async def test_ml_dispatcher_http_failure_fallback():
+    """Проверка отката на fallback при сетевой ошибке или 503 от ML-сервиса."""
+    from application.adapters.ml.ml_dispatcher import MLDispatcher
+
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+        mock_post.side_effect = httpx.ConnectError("Connection refused")
+        dispatcher = MLDispatcher(
+            mock_mode=False,
+            api_url="https://akcizny-sbor.ru.tuna.am",
+            fallback_to_mock=True,
+        )
+        result = await dispatcher.predict(b"fake_jpg_bytes")
+        assert result.slug == "fanagoriya-100-ottenkov-krasnogo-kaberne-kaberne-sovinon-krasnoe-suhoe-135"
+        assert result.confidence == 0.94
+
+
+def test_ml_prediction_result_tuple_compatibility():
+    """Проверка 100% совместимости MLPredictionResult с сигнатурой кортежа."""
+    from application.adapters.ml.ml_dispatcher import MLPredictionResult
+
+    res = MLPredictionResult(
+        slug="test-slug",
+        confidence=0.88,
+        latency_ms=120,
+        top5=[{"slug": "test-slug", "score": 0.88}],
+        card={"name": "Test Wine"},
+    )
+
+    # 1. Unpacking
+    s, c, l = res
+    assert s == "test-slug"
+    assert c == 0.88
+    assert l == 120
+
+    # 2. Indexing
+    assert res[0] == "test-slug"
+    assert res[1] == 0.88
+    assert res[2] == 120
+
+    # 3. Len
+    assert len(res) == 3
+
+    # 4. Equality with tuple
+    assert res == ("test-slug", 0.88, 120)
+
+    # 5. Attributes
+    assert res.slug == "test-slug"
+    assert len(res.top5) == 1
+    assert res.card["name"] == "Test Wine"
 
 
 def test_logout_flow(client: TestClient):

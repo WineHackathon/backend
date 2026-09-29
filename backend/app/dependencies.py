@@ -28,8 +28,15 @@ def get_rate_limiter(redis_client: redis.Redis | None = Depends(get_redis_client
 
 
 def get_ml_dispatcher(redis_client: redis.Redis | None = Depends(get_redis_client)) -> MLDispatcher:
-    """Внедрение диспетчера ML задач."""
-    return MLDispatcher(redis_client)
+    """Внедрение диспетчера ML задач с поддержкой внешнего GPU API и фолбэков."""
+    return MLDispatcher(
+        redis_client=redis_client,
+        mock_mode=settings.ml_mock_mode,
+        api_url=settings.ml_api_url,
+        api_token=settings.ml_api_token,
+        timeout_seconds=settings.ml_api_timeout,
+        fallback_to_mock=settings.ml_fallback_to_mock,
+    )
 
 
 async def get_optional_user_id(
