@@ -16,6 +16,18 @@
 
 ## Запуск
 
+### Вариант 1: Прогон против боевого сервера (Production)
+```bash
+chmod +x participant_test.sh
+
+./participant_test.sh \
+  --images-dir ./queries \
+  --manifest ./queries.tsv \
+  --endpoint 'https://wine.gagik.one/v1/eval/predict' \
+  --output ./predictions.jsonl
+```
+
+### Вариант 2: Локальный запуск (Local Docker)
 ```bash
 chmod +x participant_test.sh
 
