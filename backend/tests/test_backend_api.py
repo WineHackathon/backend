@@ -421,7 +421,7 @@ async def test_ml_dispatcher_filters_non_bottle_scans():
         "status": "provisional_candidate",
         "slug": "belbek-belbek-sandzhoveze-krasnoe-suhoe-138",
         "confidence": None,
-        "raw_scores": {"visual_cosine": None, "reranker": 0.7767},
+        "raw_scores": {"visual_cosine": 0.35, "reranker": 0.7767},
         "card": {"name": "Бельбек Санджовезе"},
         "top5": [
             {

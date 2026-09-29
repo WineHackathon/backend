@@ -79,9 +79,9 @@ class Settings(BaseSettings):
         default=True,
         validation_alias=AliasChoices("ML_FALLBACK_TO_MOCK"),
     )
-    # Minimum visual cosine similarity threshold to reject non-bottle images
-    ml_min_visual_score: float = Field(
-        default=0.70,
+    # Minimum visual cosine similarity threshold to reject non-bottle images (None disables threshold)
+    ml_min_visual_score: float | None = Field(
+        default=None,
         validation_alias=AliasChoices("ML_MIN_VISUAL_SCORE"),
     )
 

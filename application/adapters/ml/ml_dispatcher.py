@@ -128,9 +128,9 @@ class MLDispatcher:
         if min_visual_score is not None:
             self.min_visual_score = min_visual_score
         elif settings is not None:
-            self.min_visual_score = getattr(settings, "ml_min_visual_score", 0.70)
+            self.min_visual_score = getattr(settings, "ml_min_visual_score", None)
         else:
-            self.min_visual_score = 0.70
+            self.min_visual_score = None
 
     async def _predict_via_http(
         self,
@@ -200,9 +200,9 @@ class MLDispatcher:
                 # Если в кадре нет визуального совпадения с винной бутылкой (visual_cosine is None или < min_visual_score),
                 # а кандидат был найден только по случайно распознанным OCR-буквам (клавиатура, монитор, книга),
                 # отсекаем ложный слаг!
-                if self.min_visual_score and (visual_cosine is None or float(visual_cosine) < self.min_visual_score):
+                if self.min_visual_score is not None and visual_cosine is not None and float(visual_cosine) < self.min_visual_score:
                     logger.info(
-                        "MLDispatcher: visual_cosine (%s) ниже порога %s (в кадре нет бутылки вина). Отсекаем ложный слаг %s.",
+                        "MLDispatcher: visual_cosine (%s) ниже порога %s. Отсекаем ложный слаг %s.",
                         visual_cosine,
                         self.min_visual_score,
                         slug,
