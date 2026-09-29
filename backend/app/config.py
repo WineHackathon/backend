@@ -81,7 +81,7 @@ class Settings(BaseSettings):
     )
     # Minimum visual cosine similarity threshold to reject non-bottle images
     ml_min_visual_score: float = Field(
-        default=0.50,
+        default=0.70,
         validation_alias=AliasChoices("ML_MIN_VISUAL_SCORE"),
     )
 

@@ -128,9 +128,9 @@ class MLDispatcher:
         if min_visual_score is not None:
             self.min_visual_score = min_visual_score
         elif settings is not None:
-            self.min_visual_score = getattr(settings, "ml_min_visual_score", 0.50)
+            self.min_visual_score = getattr(settings, "ml_min_visual_score", 0.70)
         else:
-            self.min_visual_score = 0.50
+            self.min_visual_score = 0.70
 
     async def _predict_via_http(
         self,
