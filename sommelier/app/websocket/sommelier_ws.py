@@ -290,6 +290,16 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                 # Поиск кандидатов в каталоге
                 candidates: list[Any] = []
                 context_wine_dict = None
+                intent = None
+                wants_alternative_wines = any(
+                    k in user_text.lower()
+                    for k in (
+                        "похож", "аналог", "альтернатив", "друго", "что еще", "что-то еще",
+                        "вместо", "замен", "посоветуй другое", "подбери другое", "в стиле",
+                        "в этом стиле", "схож", "посоветуй похожее", "посоветуй еще"
+                    )
+                )
+
                 async with _get_catalog_service() as catalog_service:
                     if catalog_service:
                         try:
@@ -298,24 +308,31 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                                 try:
                                     detail = await catalog_service.get_by_slug(context_wine_slug)
                                     context_wine_dict = detail.model_dump()
-                                    # Ищем похожие вина по вкусовой матрице
-                                    candidates = await catalog_service.find_similar_wines(context_wine_slug, limit=3)
                                 except Exception:
                                     pass
 
-                            # 2. Если пользователь просит найти похожее вино
-                            elif any(k in user_text.lower() for k in ("похож", "аналог", "замен")):
-                                clean_q = user_text.lower().replace("найди", "").replace("похожее", "").replace("на", "").replace("вино", "").strip()
+                                # Подбираем похожие вина ТОЛЬКО если пользователь прямо попросил аналоги / похожие вина
+                                if wants_alternative_wines:
+                                    candidates = await catalog_service.find_similar_wines(context_wine_slug, limit=3)
+                                else:
+                                    # Вопрос касается текущего вина (температура, декантация, гастропара, бокалы)
+                                    candidates = []
+
+                            # 2. Если контекста нет, но пользователь просит найти похожее вино на конкретное вино
+                            elif wants_alternative_wines and any(k in user_text.lower() for k in ("на ", "как ")):
+                                clean_q = user_text.lower()
+                                for remove_word in ("найди", "похожее", "на", "как", "вино", "посоветуй", "аналог"):
+                                    clean_q = clean_q.replace(remove_word, "")
+                                clean_q = clean_q.strip()
                                 if clean_q:
                                     found = await catalog_service.list_wines(query=clean_q, limit=1)
                                     if found.items:
                                         base_slug = found.items[0].slug
                                         candidates = await catalog_service.find_similar_wines(base_slug, limit=3)
 
-                            # 3. Интеллектуальный многокритериальный поиск по намерениям (Intent Extractor)
-                            if not candidates:
+                            # 3. Общий поиск рекомендаций по намерениям (Intent Extractor), ТОЛЬКО если нет контекстного вина
+                            if not context_wine_slug and not candidates:
                                 intent = await intent_extractor.extract_intent(user_text, llm_client)
-                                # Если в запросе не указана категория явно, приоритет отдается вкусовому профилю пользователя
                                 active_cat = (
                                     user_taste_profile.get("preferred_categories", [None])[0]
                                     if user_taste_profile and user_taste_profile.get("preferred_categories")
@@ -343,10 +360,9 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                     pref_parts = []
                     if active_pref_cat:
                         pref_parts.append(f"Любимая категория вина: {active_pref_cat}")
-                        if not getattr(intent, "explicit_category", None):
+                        if candidates and intent and not getattr(intent, "explicit_category", None):
                             pref_parts.append(
-                                f"Пользователь предпочитает исключительно {active_pref_cat} вино. "
-                                f"Вы ОБЯЗАНЫ рекомендовать только {active_pref_cat} вино и пояснить, почему именно {active_pref_cat} образцы гармонируют с запросом."
+                                f"Пользователь предпочитает {active_pref_cat} вино."
                             )
                     if user_taste_profile.get("sweetness_pref") is not None:
                         pref_parts.append(f"Сладость: {user_taste_profile['sweetness_pref']}/5")
@@ -355,7 +371,7 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                     if user_taste_profile.get("favorite_aromas"):
                         pref_parts.append(f"Любимые ароматы: {', '.join(user_taste_profile['favorite_aromas'])}")
                     if pref_parts:
-                        system_prompt += f"\n\nПостоянный вкусовой профиль пользователя: {'; '.join(pref_parts)}. Учитывайте его персональные вкусы при рекомендации."
+                        system_prompt += f"\n\nВкусовой профиль пользователя: {'; '.join(pref_parts)}."
 
                 if candidates:
                     candidates_summary = "\n".join([
@@ -366,8 +382,16 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                     ])
                     system_prompt += (
                         f"\n\nПодобранные актуальные российские вина из каталога для рекомендации:\n{candidates_summary}\n"
-                        "ОБЯЗАТЕЛЬНО упомяните эти вина в ответе. Ответьте лаконично и емко (2 коротких абзаца, до 100-120 слов). "
-                        "Поясните, почему эти образцы гармонируют с запросом (танины, плотность, кислотность, блюдо)."
+                        "Посоветуйте эти образцы пользователю, кратко и лаконично (до 100-120 слов) поясните, "
+                        "почему они подходят к его запросу."
+                    )
+                elif context_wine_dict:
+                    system_prompt += (
+                        f"\n\nВАЖНОЕ ПРАВИЛО: Пользователь задал вопрос о конкретном открытом вине «{context_wine_dict.get('name')}».\n"
+                        "Ответьте кратко, точно и профессионально (1-2 абзаца, до 60-80 слов) ИСКЛЮЧИТЕЛЬНО на его вопрос "
+                        "(температура подачи, декантация, гастропары, бокалы, органолептика).\n"
+                        "СТРОЖАЙШЕ ЗАПРЕЩЕНО рекомендовать, упоминать или предлагать другие вина, альтернативы или образцы! "
+                        f"Отвечайте ТОЛЬКО про текущее вино «{context_wine_dict.get('name')}»."
                     )
 
                 candidates_data = [

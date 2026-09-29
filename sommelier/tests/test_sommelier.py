@@ -215,4 +215,85 @@ def test_sommelier_websocket_guest_onboarding_then_auth_flow():
         assert len(recs_resp.get("candidates", [])) > 0
 
 
+def test_sommelier_context_wine_specific_question_no_extra_candidates():
+    """
+    Проверка: если пользователь задает вопрос о конкретном открытом вине (температура, декантация),
+    сомелье отвечает только про это вино и НЕ навязывает другие вина (candidates == []).
+    """
+    client = TestClient(app)
+    user_id = uuid.uuid4()
+    token = TokenService().create_token_pair(user_id).access_token
+
+    with client.websocket_connect("/ws/sommelier") as websocket:
+        websocket.receive_json()  # welcome
+        websocket.send_json({"type": "auth", "token": token})
+        websocket.receive_json()  # auth_success
+
+        # Пользователь спрашивает температуру подачи открытого вина
+        websocket.send_json({
+            "type": "message",
+            "content": "Какая идеальная температура подачи для Массандра Мускат?",
+            "context_wine_slug": "massandra-muskat",
+            "stream": False,
+        })
+        resp = websocket.receive_json()
+        assert resp["type"] == "message"
+        # Candidates должны быть пустыми! Никаких навязанных лишних вин!
+        assert resp.get("candidates") == []
+
+
+def test_sommelier_context_wine_explicit_similar_request_returns_candidates(monkeypatch):
+    """
+    Проверка: если пользователь прямо просит посоветовать похожие вина/аналоги для открытого вина,
+    сомелье подбирает похожие вина (candidates не пустой).
+    """
+    from unittest.mock import AsyncMock, MagicMock
+    from application.dto.wine import WineDTO
+
+    mock_wine = MagicMock(spec=WineDTO)
+    mock_wine.slug = "zb-wine-moscato"
+    mock_wine.name = "ZB Wine Moscato"
+    mock_wine.category = "Белое"
+    mock_wine.sugar_type = "Полусладкое"
+    mock_wine.region = "Крым"
+    mock_wine.roskachestvo_score = 85.3
+    mock_wine.body = 2.2
+    mock_wine.acidity = 4.4
+    mock_wine.oak = 1.3
+    mock_wine.price_rub = 800
+    mock_wine.model_dump = MagicMock(return_value={"slug": "zb-wine-moscato", "name": "ZB Wine Moscato"})
+
+    from application.services.catalog_service import CatalogService
+    monkeypatch.setattr(CatalogService, "get_by_slug", AsyncMock(return_value=mock_wine))
+    monkeypatch.setattr(CatalogService, "find_similar_wines", AsyncMock(return_value=[mock_wine]))
+
+    client = TestClient(app)
+    user_id = uuid.uuid4()
+    token = TokenService().create_token_pair(user_id).access_token
+
+    with client.websocket_connect("/ws/sommelier") as websocket:
+        websocket.receive_json()  # welcome
+        websocket.send_json({"type": "auth", "token": token})
+        websocket.receive_json()  # auth_success
+
+        # Пользователь прямо просит похожие вина
+        websocket.send_json({
+            "type": "message",
+            "content": "Посоветуй похожие российские вина в этом стиле",
+            "context_wine_slug": "massandra-muskat",
+            "stream": False,
+        })
+        # При непустых candidates первым делом приходит candidates_ready
+        cand_resp = websocket.receive_json()
+        assert cand_resp["type"] == "candidates_ready"
+        assert len(cand_resp.get("candidates", [])) > 0
+
+        # Затем приходит сам ответ сомелье
+        msg_resp = websocket.receive_json()
+        assert msg_resp["type"] == "message"
+        assert len(msg_resp.get("candidates", [])) > 0
+
+
+
+
 
