@@ -333,18 +333,21 @@ async def sommelier_websocket_endpoint(websocket: WebSocket):
                             # 3. Общий поиск рекомендаций по намерениям (Intent Extractor), ТОЛЬКО если нет контекстного вина
                             if not context_wine_slug and not candidates:
                                 intent = await intent_extractor.extract_intent(user_text, llm_client)
-                                active_cat = (
-                                    user_taste_profile.get("preferred_categories", [None])[0]
-                                    if user_taste_profile and user_taste_profile.get("preferred_categories")
-                                    else answers.get("category")
-                                )
-                                if active_cat and not getattr(intent, "explicit_category", None):
-                                    intent.category = active_cat
+                                if intent.is_recommendation_request:
+                                    active_cat = (
+                                        user_taste_profile.get("preferred_categories", [None])[0]
+                                        if user_taste_profile and user_taste_profile.get("preferred_categories")
+                                        else answers.get("category")
+                                    )
+                                    if active_cat and not getattr(intent, "explicit_category", None):
+                                        intent.category = active_cat
 
-                                if not intent.sugar_type and user_taste_profile.get("sweetness_pref") is not None:
-                                    if user_taste_profile["sweetness_pref"] <= 1.8:
-                                        intent.sugar_type = "Сухое"
-                                candidates = await catalog_service.recommend_wines_by_intent(intent, limit=3)
+                                    if not intent.sugar_type and user_taste_profile.get("sweetness_pref") is not None:
+                                        if user_taste_profile["sweetness_pref"] <= 1.8:
+                                            intent.sugar_type = "Сухое"
+                                    candidates = await catalog_service.recommend_wines_by_intent(intent, limit=3)
+                                else:
+                                    candidates = []
 
                         except Exception as exc:
                             logger.warning(f"Ошибка поиска вин в каталоге для копайлота: {exc}")

@@ -57,3 +57,41 @@ async def test_extract_intent_fallback_without_llm():
     assert intent.category == "Красное"
     assert intent.target_body == 4.5
     assert intent.max_price_rub == 2500.0
+    assert intent.is_recommendation_request is True
+
+
+@pytest.mark.asyncio
+async def test_serving_and_pairing_questions_suppress_wine_cards():
+    """Вопросы о сервировке и гастропарах к конкретному вину НЕ должны спамить карточками других вин."""
+    q1 = "С чем лучше подать вино Массандра Мускат?"
+    intent1 = intent_extractor.extract_heuristic(q1)
+    assert intent1.is_recommendation_request is False
+
+    q2 = "Какая оптимальная температура подачи у Шардоне?"
+    intent2 = intent_extractor.extract_heuristic(q2)
+    assert intent2.is_recommendation_request is False
+
+    q3 = "Нужно ли декантировать Саперави?"
+    intent3 = intent_extractor.extract_heuristic(q3)
+    assert intent3.is_recommendation_request is False
+
+    q4 = "В каких бокалах подавать Пино Нуар?"
+    intent4 = intent_extractor.extract_heuristic(q4)
+    assert intent4.is_recommendation_request is False
+
+
+@pytest.mark.asyncio
+async def test_explicit_wine_recommendations_enable_wine_cards():
+    """Явные просьбы подобрать или посоветовать вино должны активировать карточки вин."""
+    q1 = "Посоветуй вино к стейку"
+    intent1 = intent_extractor.extract_heuristic(q1)
+    assert intent1.is_recommendation_request is True
+
+    q2 = "Какое вино выбрать к морепродуктам?"
+    intent2 = intent_extractor.extract_heuristic(q2)
+    assert intent2.is_recommendation_request is True
+
+    q3 = "Подбери белое сухое до 2000 рублей"
+    intent3 = intent_extractor.extract_heuristic(q3)
+    assert intent3.is_recommendation_request is True
+

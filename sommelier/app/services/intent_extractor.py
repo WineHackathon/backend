@@ -127,6 +127,36 @@ class IntentExtractor:
         if food_pairing:
             keywords.append(food_pairing.split("/")[0].strip())
 
+        # 8. Определение типа намерения: поиск вина (рекомендация) vs вопрос о подаче/гастропаре к вину
+        is_serving_or_pairing_info = any(
+            k in t for k in (
+                "с чем подать", "с чем лучше подать", "с чем пить", "с чем лучше пить",
+                "с чем сочетать", "с чем сочетается", "к чему подходит", "с какой едой",
+                "какая еда", "какие блюда", "температура", "охладить", "охлаждать",
+                "декантер", "декантир", "аэрац", "бокал", "бокалы", "в каких бокалах",
+                "как хранить", "сколько хранится", "срок годности", "после вскрытия", "после открытия",
+                "что такое", "чем отличается", "как правильно пить", "как правильно дегустировать",
+            )
+        )
+
+        is_explicit_recommendation = any(
+            k in t for k in (
+                "посоветуй", "порекомендуй", "подбери", "найди", "какое вино",
+                "что выпить", "что купить", "что взять", "выбрать вино", "выбери вино",
+                "топ вин", "лучшие вина", "лучшее вино", "вино к ", "вино под ", "вино для "
+            )
+        )
+
+        if is_serving_or_pairing_info and not is_explicit_recommendation:
+            is_recommendation_request = False
+        else:
+            is_recommendation_request = (
+                is_explicit_recommendation
+                or (food_pairing is not None and not is_serving_or_pairing_info)
+                or (explicit_category is not None and (sugar_type is not None or target_body is not None))
+                or max_price is not None
+            )
+
         return WineSearchIntent(
             category=category,
             explicit_category=explicit_category,
@@ -137,7 +167,7 @@ class IntentExtractor:
             target_body=target_body,
             max_price_rub=max_price,
             search_keywords=keywords,
-            is_recommendation_request=True,
+            is_recommendation_request=is_recommendation_request,
         )
 
     async def extract_intent(self, text: str, llm_client: Any | None = None) -> WineSearchIntent:
@@ -192,7 +222,7 @@ class IntentExtractor:
                 target_body=data.get("target_body") or base_intent.target_body,
                 max_price_rub=data.get("max_price_rub") or base_intent.max_price_rub,
                 search_keywords=data.get("search_keywords") or base_intent.search_keywords,
-                is_recommendation_request=True,
+                is_recommendation_request=base_intent.is_recommendation_request,
             )
         except Exception as exc:
             logger.warning(f"Ошибка LLM intent extraction ({exc}), используем эвристический результат")
