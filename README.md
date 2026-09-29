@@ -1,7 +1,13 @@
 # 🍷 Платформа «Своё Вино» & AI-Сомелье
 
-Платформа подбора и распознавания российского вина с персональным AI-Сомелье на базе 4D Вкусовой матрицы (Taste Matrix).  
-Разработано в рамках хакатона **Лидеры Цифровой Трансформации (ЛЦТ 2026)**.
+### Команда: «Акцизный сбор» (ЛЦТ 2026, Задача №10 — РСХБ)
+
+> 🔗 **Навигация по компонентам экосистемы решения:**
+> - 🚀 **Рабочий прототип (Production):** [https://wine.gagik.one](https://wine.gagik.one)
+> - 📄 **Swagger / OpenAPI документация:** [https://wine.gagik.one/docs](https://wine.gagik.one/docs)
+> - 🎨 **Frontend репозиторий (Mobile PWA WebApp):** [https://github.com/WineHackathon/frontend](https://github.com/WineHackathon/frontend)
+> - 🧠 **ML репозиторий (SigLIP-2 + PaddleOCR + Qwen-VL):** [https://github.com/WineHackathon/ml](https://github.com/WineHackathon/ml)
+> - 🎯 **Стенд проверки чекером (Evaluator):** [Инструкция к eval/participant_test.sh](./eval/README.md)
 
 ---
 
