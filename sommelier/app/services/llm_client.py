@@ -65,9 +65,9 @@ class SommelierLLMClient:
             "model": self.model,
             "messages": payload_messages,
             "temperature": 0.7,
-            "max_tokens": 300,
+            "max_tokens": 1024,
             "provider": {
-                "order": ["Cerebras", "Groq"],
+                "order": ["Groq", "SambaNova", "DeepInfra"],
                 "allow_fallbacks": True,
             },
         }
@@ -180,10 +180,10 @@ class SommelierLLMClient:
             "model": self.model,
             "messages": payload_messages,
             "temperature": 0.7,
-            "max_tokens": 300,
+            "max_tokens": 1024,
             "stream": True,
             "provider": {
-                "order": ["Cerebras", "Groq"],
+                "order": ["Groq", "SambaNova", "DeepInfra"],
                 "allow_fallbacks": True,
             },
         }
@@ -202,6 +202,9 @@ class SommelierLLMClient:
                                     break
                                 try:
                                     chunk = json.loads(raw_data)
+                                    if "error" in chunk:
+                                        logger.warning(f"OpenRouter streaming error: {chunk['error']}")
+                                        break
                                     delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
                                     if delta:
                                         yield delta
