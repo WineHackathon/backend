@@ -79,6 +79,11 @@ class Settings(BaseSettings):
         default=True,
         validation_alias=AliasChoices("ML_FALLBACK_TO_MOCK"),
     )
+    # Minimum visual cosine similarity threshold to reject non-bottle images
+    ml_min_visual_score: float = Field(
+        default=0.50,
+        validation_alias=AliasChoices("ML_MIN_VISUAL_SCORE"),
+    )
 
     # Yandex ID OAuth 2.0
     yandex_client_id: str = ""

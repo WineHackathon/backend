@@ -36,6 +36,7 @@ def get_ml_dispatcher(redis_client: redis.Redis | None = Depends(get_redis_clien
         api_token=settings.ml_api_token,
         timeout_seconds=settings.ml_api_timeout,
         fallback_to_mock=settings.ml_fallback_to_mock,
+        min_visual_score=settings.ml_min_visual_score,
     )
 
 

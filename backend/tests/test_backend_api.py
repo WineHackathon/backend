@@ -412,6 +412,46 @@ async def test_ml_dispatcher_http_success():
 
 
 @pytest.mark.asyncio
+async def test_ml_dispatcher_filters_non_bottle_scans():
+    """Проверка отсечения ложных распознаваний (клавиатуры, мониторы), когда visual_cosine равен null или ниже порога."""
+    from application.adapters.ml.ml_dispatcher import MLDispatcher
+
+    # Кейс клавиатуры/ноутбука: SigLIP2 не нашел бутылку (visual_cosine=None), но OCR зацепил текст
+    mock_response_data = {
+        "status": "provisional_candidate",
+        "slug": "belbek-belbek-sandzhoveze-krasnoe-suhoe-138",
+        "confidence": None,
+        "raw_scores": {"visual_cosine": None, "reranker": 0.7767},
+        "card": {"name": "Бельбек Санджовезе"},
+        "top5": [
+            {
+                "slug": "belbek-belbek-sandzhoveze-krasnoe-suhoe-138",
+                "score": None,
+                "ocr_entity_score": 0.975294,
+            }
+        ],
+    }
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = mock_response_data
+
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+        mock_post.return_value = mock_resp
+        dispatcher = MLDispatcher(
+            mock_mode=False,
+            api_url="https://akcizny-sbor.ru.tuna.am",
+            api_token="test-token",
+            min_visual_score=0.50,
+        )
+        result = await dispatcher.predict(b"fake_keyboard_image")
+        # Должен отсечь ложный слаг!
+        assert result.slug is None
+        assert result.confidence == 0.0
+
+
+
+@pytest.mark.asyncio
 async def test_ml_dispatcher_http_failure_fallback():
     """Проверка отката на fallback при сетевой ошибке или 503 от ML-сервиса."""
     from application.adapters.ml.ml_dispatcher import MLDispatcher

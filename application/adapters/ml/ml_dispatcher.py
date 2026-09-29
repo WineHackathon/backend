@@ -78,6 +78,7 @@ class MLDispatcher:
         api_token: str | None = None,
         timeout_seconds: float | None = None,
         fallback_to_mock: bool | None = None,
+        min_visual_score: float | None = None,
     ) -> None:
         self.redis = redis_client
 
@@ -124,6 +125,13 @@ class MLDispatcher:
         else:
             self._fallback_to_mock = True
 
+        if min_visual_score is not None:
+            self.min_visual_score = min_visual_score
+        elif settings is not None:
+            self.min_visual_score = getattr(settings, "ml_min_visual_score", 0.50)
+        else:
+            self.min_visual_score = 0.50
+
     async def _predict_via_http(
         self,
         image_bytes: bytes,
@@ -164,6 +172,14 @@ class MLDispatcher:
                     except (ValueError, TypeError):
                         confidence = None
 
+                # Извлекаем визуальный скор схожести (SigLIP2 cosine similarity)
+                raw_scores = data.get("raw_scores") or {}
+                visual_cosine = raw_scores.get("visual_cosine")
+                if visual_cosine is None and top5:
+                    top_score = top5[0].get("score")
+                    if top_score is not None:
+                        visual_cosine = top_score
+
                 # Если confidence uncalibrated (null), берём reranker_score / visual_cosine
                 if confidence is None and top5:
                     top1 = top5[0]
@@ -174,17 +190,29 @@ class MLDispatcher:
                         except (ValueError, TypeError):
                             confidence = None
 
-                if confidence is None and data.get("raw_scores"):
-                    raw_vc = data["raw_scores"].get("visual_cosine")
-                    if raw_vc is not None:
-                        try:
-                            confidence = round(float(raw_vc), 4)
-                        except (ValueError, TypeError):
-                            confidence = None
+                if confidence is None and visual_cosine is not None:
+                    try:
+                        confidence = round(float(visual_cosine), 4)
+                    except (ValueError, TypeError):
+                        confidence = None
+
+                # Фильтр ложных срабатываний (Out-of-Distribution / Anti-Hallucination):
+                # Если в кадре нет визуального совпадения с винной бутылкой (visual_cosine is None или < min_visual_score),
+                # а кандидат был найден только по случайно распознанным OCR-буквам (клавиатура, монитор, книга),
+                # отсекаем ложный слаг!
+                if self.min_visual_score and (visual_cosine is None or float(visual_cosine) < self.min_visual_score):
+                    logger.info(
+                        "MLDispatcher: visual_cosine (%s) ниже порога %s (в кадре нет бутылки вина). Отсекаем ложный слаг %s.",
+                        visual_cosine,
+                        self.min_visual_score,
+                        slug,
+                    )
+                    slug = None
+                    confidence = 0.0
 
                 return MLPredictionResult(
                     slug=slug,
-                    confidence=confidence or (0.85 if slug else None),
+                    confidence=confidence or (0.85 if slug else 0.0),
                     latency_ms=latency_ms,
                     top5=top5,
                     card=card,
