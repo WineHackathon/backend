@@ -197,13 +197,14 @@ class MLDispatcher:
                         confidence = None
 
                 # Фильтр ложных срабатываний (Out-of-Distribution / Anti-Hallucination):
-                # 1. Если в кадре нет визуального совпадения с винной бутылкой (visual_cosine is None),
-                # а кандидат был найден только по случайно распознанным OCR-буквам (монитор ноутбука, книга, клавиатура),
-                # отсекаем ложный слаг!
-                if visual_cosine is None:
+                # 1. Если в кадре нет визуального совпадения (visual_cosine is None) И нет высокого скора реранкера (confidence < 0.52),
+                # а кандидат найден только по случайно распознанным буквам (монитор ноутбука, книга, клавиатура),
+                # отсекаем ложный слаг! Если же реранкер уверен (>= 0.52), это легитимный кандидат, добавленный через OCR-фьюжн.
+                if visual_cosine is None and (confidence is None or confidence < 0.52):
                     logger.info(
-                        "MLDispatcher: visual_cosine отсутствует (score is None). "
+                        "MLDispatcher: visual_cosine отсутствует и confidence (%s) < 0.52. "
                         "В кадре нет винной бутылки (ложное OCR-срабатывание). Отсекаем ложный слаг %s.",
+                        confidence,
                         slug,
                     )
                     slug = None
